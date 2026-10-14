@@ -347,6 +347,7 @@ add_library(PoundCore OBJECT
         src/core/sync/mutex.c
         src/core/sync/thread.c
         src/core/guest_state.c
+        src/core/cpu/interpreter.c
         src/core/gpu/sm86/generated/opcodes.c
         src/core/gpu/sm86/decoder.c
         src/core/gpu/sm86/ir.c

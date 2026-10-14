@@ -134,6 +134,49 @@ flag_n/z/c/v
 struct by field offset, so its layout is part of the ABI between the JIT and the
 guest CPU. `tests/test_guest_state.c` pins every offset as a regression guard.
 
+### ARM64 interpreter — `src/core/cpu/interpreter.{h,c}`
+
+`interpreter_run` is the guest CPU's reference path: it decodes and executes a
+budget of ARM64 instructions directly, and it is what the JIT execution loop's
+`interpret` hook binds to when a block has to run without being recompiled.
+`interpreter_probe` answers whether a single word is one this module can execute,
+which is what lets a caller choose the interpreter over the JIT for a block.
+
+The two share one decoder. `a64_decoded_t` is a flat struct of already-extracted
+fields — no pointers, no unions — so decoding a word costs one pass and executing
+it reads only resolved values; no field position is re-derived at execute time.
+An encoding the decoder rejects becomes `INTERPRETER_TRAP_UNDEFINED` rather than a
+silent no-op.
+
+The supported set is deliberately closed and spelled out in the header: the
+wide-immediate moves; the add/subtract and logical families in their immediate
+and shifted-register forms, including the `MOV`/`MVN`/`CMP`/`CMN`/`TST` aliases;
+multiply, divide, and the variable shifts; the conditional-select family (`CSEL`,
+`CSINC`, `CSINV`, `CSNEG`, and the `CSET` alias); `ADR` and `ADRP`; the four
+branch shapes plus `BR`/`BLR`/`RET`; and the unsigned-offset and literal loads
+and stores together with the offset-form `LDP`/`STP`. Floating point, SIMD,
+atomics, and system-register access are out of scope, and an encoding outside the
+set is refused by both entry points.
+
+Register 31 is role-dependent, as the architecture requires: it is the stack
+pointer where the encoding treats the operand as an address (an add/subtract
+immediate operand, a load or store base) and the zero register everywhere else.
+`SP` lives in `x[31]`; reading the zero register yields zero and writing it is
+dropped.
+
+The return contract separates the ways a run can end. `POUND_SUCCESS` means the
+loop stopped normally — either it retired the whole budget, or it hit a trap and,
+if `trap_out` was given, recorded it in `interpreter_trap_t`. An unmapped fetch
+or data access returns `POUND_ERROR_MEMORY_FAULT` with `pc` left on the faulting
+instruction and `*executed` counting only the instructions that retired before
+it. `SVC` is reported as a syscall trap; `BRK` and `HLT` share the breakpoint
+kind, being the two deliberate halts. A `NULL` `state`, `memory`, or `executed`
+is `POUND_ERROR_INVALID_ARGUMENT`; a `NULL` `trap_out` is allowed and simply
+discards the reason.
+
+`tests/test_interpreter.c` drives it with hand-verified instruction words (33
+cases), covering each family plus the trap, fault, budget, and `probe` contracts.
+
 ### SM86 → SPIR-V translation — `src/core/gpu/sm86/`
 
 The SM86 module translates NVIDIA SM86 shader microcode to SPIR-V. It is split

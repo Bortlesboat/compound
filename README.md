@@ -78,7 +78,7 @@ It is the Nintendo Switch 1 Emulator too!
 | 🐛 **Debug Tooling** | ✅ Working | GUI with live reload, comprehensive logging |
 | ⚡ **Ballistic ARM64 JIT** | 🚧 Experimental | In-progress recompiler integration |
 | 💾 **Filesystem & Crypto** | 🚧 Experimental | HFS0 parser, SHA256, verification systems |
-| 🖥️ **Guest CPU & OS** | 🔮 Planned | ARM64 dispatch, Horizon kernel, syscalls |
+| 🖥️ **Guest CPU & OS** | 🚧 Experimental | A64 interpreter subset; kernel and syscalls planned |
 | 🎨 **Graphics & Audio** | 🚧 Experimental | SM86→SPIR-V translation, Vulkan backend planned |
 | 🎮 **Commercial Titles** | 🔮 Planned | Compatibility layer and title support |
 
@@ -103,7 +103,7 @@ Compound is in **early-stage, active development**. The emulator has:
 ✓ Memory accounting and profiling
 ✓ Debug GUI with real-time diagnostics
 ✓ Logging framework
-✗ Guest CPU execution (in progress)
+✗ Guest CPU execution (interpreter subset landed, JIT pending)
 ✗ Commercial title support (planned)
 ```
 
@@ -131,7 +131,7 @@ Compound is in **early-stage, active development**. The emulator has:
 - [x] Execution loop integration
 
 ### 🖥️ Phase 4: Guest CPU & OS Emulation
-- [ ] ARM64 CPU instruction dispatch
+- [x] ARM64 CPU instruction dispatch (interpreter subset)
 - [ ] Horizon OS kernel abstraction
 - [ ] System call handling and scheduling
 - [ ] Core OS services and memory layout
@@ -322,10 +322,9 @@ under the terms of the GPL v3.
 
 ### Next Focus
 
-1. Guest CPU instruction dispatch (ARM64)
-2. Horizon OS kernel abstraction
-3. Graphics pipeline (SM86→SPIR-V)
-4. Commercial title compatibility
+1. Horizon OS kernel abstraction
+2. Graphics pipeline (SM86→SPIR-V)
+3. Commercial title compatibility
 
 ---
 
