@@ -74,3 +74,5 @@ Thumbs.db
 *.aab
 *.keystore
 *.jks
+# OpenChamber session state, local to a checkout.
+/.openchamber/

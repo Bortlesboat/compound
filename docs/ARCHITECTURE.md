@@ -134,6 +134,18 @@ flag_n/z/c/v
 struct by field offset, so its layout is part of the ABI between the JIT and the
 guest CPU. `tests/test_guest_state.c` pins every offset as a regression guard.
 
+### SM86 → SPIR-V translation — `src/core/gpu/sm86/`
+
+The SM86 module translates NVIDIA SM86 shader microcode to SPIR-V. It is split
+across decoder, opcode metadata, an intermediate representation (IR), a SPIR-V
+emitter, and a translate entry point. The decoder and generated opcode tables are
+ported from the upstream pound-emu reference and extended with an SoA IR and a
+header-driven SPIR-V emitter. The translation produces a self-contained SPIR-V
+function using CB0–CB15 Uniform blocks for constant buffers and supports a small
+subset of opcodes (NOP, MOV, IADD3, IMAD, ISETP, LDC, EXIT, KILL) with predicated
+forms, returning `POUND_ERROR_UNSUPPORTED_INSTRUCTION` for everything else. The
+module is built into `PoundCore` and covered by `tests/test_sm86.c` (34 cases).
+
 ---
 
 ## Debug GUI and hot reload

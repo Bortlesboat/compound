@@ -33,6 +33,7 @@ set(POUND_TEST_SUITES
         hfs0
         metadata
         execution
+        sm86
         )
 
 set(POUND_TEST_SOURCES
@@ -50,6 +51,7 @@ set(POUND_TEST_SOURCES
         test_hfs0.c
         test_jit_metadata.c
         test_jit_execution.c
+        test_sm86.c
         )
 
 # The Ballistic bridge is the only thing under test that needs the engine's headers,

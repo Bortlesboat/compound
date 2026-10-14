@@ -46,6 +46,23 @@
 //! counter, nothing sleeps, and nothing depends on the host being fast enough, so an
 //! instruction cannot be half-executed when it is inspected.
 //!
+//! # Why the translation callback has a watchdog
+//!
+//! The prebuilt's fetch path does not work (see
+//! `the_prebuilt_fetches_no_guest_code_through_the_translation_interface`), and one way it
+//! fails is by *not returning*: it asks the host to translate the same guest code without
+//! end instead of reporting that it cannot use it. That is a wedge inside
+//! `bal_engine_run_thread` that no guest-program terminator can reach, because the engine
+//! never gets as far as executing an instruction -- it is stuck fetching. Left alone it
+//! spins a core until the CI lane times out, which is the one failure a lane cannot report.
+//!
+//! `translate_window` therefore refuses to serve an address the engine keeps asking for
+//! (or, more generally, once a fetch has asked for far more than a program this size could
+//! ever need). The engine reads the refusal as a program counter it cannot map and returns
+//! `BAL_ERROR_MEMORY_FAULT` rather than wedging, which the `the_prebuilt_*` cases accept
+//! alongside the `BAL_ERROR_UNKNOWN_INSTRUCTION` it returns when it does give up on its
+//! own. The bound is never reached by a fetch that is making progress.
+//!
 //! # Platform
 //!
 //! Compiled only where the engine is linked (`POUND_ENABLE_BALLISTIC`). This is the one
@@ -248,7 +265,24 @@ typedef struct
 {
     uint8_t *base;
     size_t   bytes;
+
+    /// Watchdog state. The prebuilt can wedge in a fetch retry, asking for guest code
+    /// without end instead of returning; the host callback is the only place that can see
+    /// it. `served` counts everything ever translated from this window, and
+    /// `same_address`/`last_address` count a run of requests for one address. Either
+    /// reaching its bound means the engine is not moving, and the callback refuses.
+    unsigned long       served;
+    bal_guest_address_t last_address;
+    unsigned long       same_address;
 } guest_window_t;
+
+/// How many translations a window serves before the watchdog refuses.
+///
+/// A guest program this suite runs is a handful of instructions, so a correct fetch asks
+/// for a handful of addresses; a wedge asks millions of times without advancing. The
+/// bound is far above any healthy exchange and far below the millions a wedge reaches, so
+/// it cannot fire on a fetch that is making progress.
+#define BALLISTIC_TRANSLATE_LIMIT 1000000UL
 
 /// Translates a guest address to a host address, refusing anything outside the window.
 ///
@@ -291,7 +325,31 @@ translate_window(void *context, const bal_guest_address_t guest_address, size_t 
         return NULL;
     }
 
-    const guest_window_t *const window = (const guest_window_t *)context;
+    guest_window_t *const window = (guest_window_t *)context;
+
+    // Watchdog against the prebuilt's fetch retry. When it cannot build a block it asks
+    // for guest code without end rather than reporting that it cannot proceed, and the
+    // host callback is the only place that can see the repetition; the refusal below turns
+    // the wedge into a fetch failure the engine returns from. `served` catches a wedge
+    // that moves between addresses, and the per-address count catches one that stays put.
+    // Both bounds are far above any exchange a working fetch makes.
+    ++window->served;
+
+    if (window->last_address == guest_address)
+    {
+        ++window->same_address;
+    }
+    else
+    {
+        window->last_address = guest_address;
+        window->same_address = 1UL;
+    }
+
+    if ((window->served > BALLISTIC_TRANSLATE_LIMIT) ||
+        (window->same_address > BALLISTIC_TRANSLATE_LIMIT))
+    {
+        return NULL;
+    }
 
     // Widened before the comparison rather than after. A 64-bit guest address narrowed to
     // `size_t` first would wrap, and a wrapped address inside the window is a way to read
@@ -1056,6 +1114,22 @@ POUND_TEST(ballistic_engine, the_bridge_serves_the_engine_its_code_memory)
     fixture_destroy(fixture);
 }
 
+/// Whether `status` is the engine failing to fetch or enter guest code.
+///
+/// The prebuilt's broken fetch path does not always report itself the same way. Left alone
+/// it can ask the host for guest code without end, and the watchdog in `translate_window`
+/// refuses an address it will not stop asking for -- which the engine reads as a program
+/// counter it cannot map and answers with `BAL_ERROR_MEMORY_FAULT`. When it does return on
+/// its own it answers `BAL_ERROR_UNKNOWN_INSTRUCTION`. Both mean the same thing to this
+/// file: no instruction was fetched and none ran. The cases assert the part that must not
+/// vary -- nothing retired -- next to this, so a build that starts fetching is still
+/// caught.
+static bool
+is_fetch_failure(const bal_error_t status)
+{
+    return (BAL_ERROR_UNKNOWN_INSTRUCTION == status) || (BAL_ERROR_MEMORY_FAULT == status);
+}
+
 /// The prebuilt does not fetch guest code through the translation interface.
 ///
 /// This case records a limitation of the vendored `Ballistic.lib`, and it is written as a
@@ -1076,7 +1150,9 @@ POUND_TEST(ballistic_engine, the_bridge_serves_the_engine_its_code_memory)
 /// 3. The bytes there are instructions the engine can decode. Asserted in
 ///    `every_encoding_the_programs_use_is_one_the_engine_decodes` against the engine's
 ///    own `bal_decode_arm64`.
-/// 4. None of that is enough: the engine still reports `BAL_ERROR_UNKNOWN_INSTRUCTION`.
+/// 4. None of that is enough: the engine still reports a fetch failure -- normally
+///    `BAL_ERROR_UNKNOWN_INSTRUCTION`, and `BAL_ERROR_MEMORY_FAULT` when the host
+///    watchdog below refuses an address the engine asks for without end.
 ///
 /// The conclusion is that the prebuilt's instruction fetch does not go through
 /// `bal_memory_interface_t::translate`, or does not go through the interface the vendored
@@ -1133,11 +1209,12 @@ POUND_TEST(ballistic_engine, the_prebuilt_fetches_no_guest_code_through_the_tran
 
     const bal_error_t status = run_to(fixture, (uint64_t)PROGRAM_LENGTH);
 
-    // Step 4. This is the behaviour being pinned. `BAL_ERROR_UNKNOWN_INSTRUCTION` for an
-    // instruction the engine's own decoder accepts, at a program counter it demonstrably
-    // reads, behind a translation callback that demonstrably resolves -- that combination
-    // is a fetch path that never consulted the interface.
-    POUND_CHECK_MSG(BAL_ERROR_UNKNOWN_INSTRUCTION == status,
+    // Step 4. This is the behaviour being pinned. A fetch failure for an instruction the
+    // engine's own decoder accepts, at a program counter it demonstrably reads, behind a
+    // translation callback that demonstrably resolves -- that combination is a fetch path
+    // that never consulted the interface. `is_fetch_failure` covers both forms it takes;
+    // the count below is what separates "could not fetch" from "fetched and ran".
+    POUND_CHECK_MSG(is_fetch_failure(status),
                     "The engine reported %s rather than failing to fetch guest code. If this now "
                     "succeeds, the prebuilt can fetch guest code and the assertions in this file "
                     "should be rewritten to check the guest's results instead.",
@@ -1237,7 +1314,7 @@ POUND_TEST(ballistic_engine, the_prebuilt_touches_no_guest_data_through_the_tran
 
     const bal_error_t status = run_to(fixture, (uint64_t)PROGRAM_LENGTH);
 
-    POUND_CHECK_MSG(BAL_ERROR_UNKNOWN_INSTRUCTION == status,
+    POUND_CHECK_MSG(is_fetch_failure(status),
                     "The engine reported %s rather than failing to fetch guest code. If this now "
                     "succeeds, the prebuilt can fetch guest code and the assertions in this file "
                     "should be rewritten to check the guest's results instead.",

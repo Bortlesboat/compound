@@ -79,7 +79,7 @@ It is the Nintendo Switch 1 Emulator too!
 | ⚡ **Ballistic ARM64 JIT** | 🚧 Experimental | In-progress recompiler integration |
 | 💾 **Filesystem & Crypto** | 🚧 Experimental | HFS0 parser, SHA256, verification systems |
 | 🖥️ **Guest CPU & OS** | 🔮 Planned | ARM64 dispatch, Horizon kernel, syscalls |
-| 🎨 **Graphics & Audio** | 🔮 Planned | SM86→SPIR-V, Vulkan backend, multi-media |
+| 🎨 **Graphics & Audio** | 🚧 Experimental | SM86→SPIR-V translation, Vulkan backend planned |
 | 🎮 **Commercial Titles** | 🔮 Planned | Compatibility layer and title support |
 
 ---
@@ -137,7 +137,7 @@ Compound is in **early-stage, active development**. The emulator has:
 - [ ] Core OS services and memory layout
 
 ### 🎨 Phase 5: Graphics & Completeness
-- [ ] SM86 → SPIR-V translation
+- [x] SM86 → SPIR-V translation
 - [ ] Vulkan render backend
 - [ ] Input, audio, and platform services
 - [ ] Bootable guest state and title compatibility
