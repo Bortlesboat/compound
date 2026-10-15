@@ -106,6 +106,18 @@ typedef enum
     /// a handle at all -- a NULL pointer, or a service name of the wrong length.
     POUND_ERROR_INVALID_HANDLE,
 
+    /// A guest system call, or a feature inside one, is not implemented.
+    ///
+    /// Distinct from `POUND_ERROR_UNSUPPORTED_INSTRUCTION`, which reports an *encoding*
+    /// the decoder does not know -- a fact about the CPU. This reports a well-formed
+    /// `svc` whose number, or whose behaviour, the OS layer has not implemented:
+    /// `svcSendSyncRequest` is a perfectly valid instruction, and refusing it is a
+    /// statement about Pound rather than about the guest. It is never a guest-visible
+    /// `Result`, because there is no honest `Result` for "Pound has not written this
+    /// yet" and fabricating one would make the emulator look like firmware that
+    /// answered.
+    POUND_ERROR_UNSUPPORTED_SYSCALL,
+
     // Concurrency Errors
 
     /// A thread could not be waited on, or the platform refused to report on it.

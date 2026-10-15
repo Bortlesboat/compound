@@ -169,8 +169,10 @@ loop stopped normally — either it retired the whole budget, or it hit a trap a
 if `trap_out` was given, recorded it in `interpreter_trap_t`. An unmapped fetch
 or data access returns `POUND_ERROR_MEMORY_FAULT` with `pc` left on the faulting
 instruction and `*executed` counting only the instructions that retired before
-it. `SVC` is reported as a syscall trap; `BRK` and `HLT` share the breakpoint
-kind, being the two deliberate halts. A `NULL` `state`, `memory`, or `executed`
+it. `SVC` is reported as a syscall trap, carrying its immediate, which is what
+`hos_syscall_dispatch` takes — the trap and the call are joined by a number rather
+than by a shared type; `BRK` and `HLT` share the breakpoint kind, being the two
+deliberate halts. A `NULL` `state`, `memory`, or `executed`
 is `POUND_ERROR_INVALID_ARGUMENT`; a `NULL` `trap_out` is allowed and simply
 discards the reason.
 
@@ -225,6 +227,52 @@ format are out of scope; each is refused rather than half-handled. The module ad
 `POUND_ERROR_INVALID_HANDLE` for a handle that names nothing — always logged, unlike the
 `POUND_ERROR_NOT_FOUND` it sits beside, because a missing service is an ordinary answer
 and a missing object never is. `tests/test_hos_kernel.c` covers it with 31 cases.
+
+### Horizon OS system calls — `src/core/hos/syscall.{h,c}`
+
+An A64 `SVC` is a trap to a numbered kernel entry point: the immediate is the number,
+`X0`–`X7` are the arguments, and `X0` carries the answer back. The interpreter stops on
+one and reports `INTERPRETER_TRAP_SVC` with the immediate; this module is the only thing
+in Pound that turns that number into work.
+
+The whole design is one rule about what a failure looks like, and it is the rule that
+keeps an emulator honest. A call can fail in two entirely different ways:
+
+- **Horizon itself refuses it.** `svcSignalEvent` handed a session handle instead of a
+  writable event is a real failure on hardware with a documented `Result` (`0xE401`).
+  The call *completes*: `X0` gets that value, `pc` steps over the trap, and the guest
+  branches on it exactly as it would on a Switch.
+- **Pound has not implemented it.** `svcSendSyncRequest` needs the CMIF wire format and
+  the thread-local IPC buffer; `svcSetHeapSize` needs the memory layout. Neither exists.
+  These do not complete: the call returns `POUND_ERROR_UNSUPPORTED_SYSCALL`, logs the
+  number *and its name* (`svcSendSyncRequest (0x21)`), and leaves `X0` and `pc` alone so
+  the trap is still standing to be looked at.
+
+Collapsing the second into the first is the one thing this module must not do. A plausible
+`Result` for a call nobody wrote makes a title take a branch on an answer Pound invented,
+and the emulator looks like firmware that replied. A refusal is a fact about Pound; a
+`Result` is a fact about the guest.
+
+The same reasoning shapes the two calls that can block. `svcWaitSynchronization` is
+implemented for exactly the case whose correct behaviour is *not* to block: a zero timeout
+is a poll, and the real kernel answers it immediately with either a ready index or `0xEA01`
+("timeout"), so polling here produces the `Result` the hardware would, for the same reason.
+A non-zero timeout must block, and returning `0xEA01` early would be a lie the guest cannot
+detect — so it is refused. `svcSleepThread` follows the same split: the three specified
+yields (0, `-1`, `-2`) return without sleeping and are free, while a positive duration must
+block and is refused. Both become implementable when the scheduler lands.
+
+A wait over several handles treats a session as a legitimate object that is simply never
+the ready one, rather than as an error: a title waiting on a session and an event at once
+is a normal shape for a main loop, and nothing queues a message in this slice. Memory-layout
+calls, IPC, and the thread and process queries are out of scope and refused by name.
+
+The module adds `POUND_ERROR_UNSUPPORTED_SYSCALL` for a well-formed `svc` whose number or
+feature the OS layer has not implemented — distinct from
+`POUND_ERROR_UNSUPPORTED_INSTRUCTION`, which is a fact about the decoder. The dispatch
+context carries the kernel, the process, the guest memory, and the caller's clock and core
+number rather than reading a global, so a test can drive any of them.
+`tests/test_hos_syscall.c` covers it with 23 cases.
 
 ---
 

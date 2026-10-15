@@ -35,6 +35,7 @@ set(POUND_TEST_SUITES
         execution
         interpreter
         hos_kernel
+        hos_syscall
         sm86
         )
 
@@ -55,6 +56,7 @@ set(POUND_TEST_SOURCES
         test_jit_execution.c
         test_interpreter.c
         test_hos_kernel.c
+        test_hos_syscall.c
         test_sm86.c
         )
 

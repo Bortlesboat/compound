@@ -29,6 +29,7 @@ void pound_register_metadata_tests(void);
 void pound_register_execution_tests(void);
 void pound_register_interpreter_tests(void);
 void pound_register_hos_kernel_tests(void);
+void pound_register_hos_syscall_tests(void);
 void pound_register_sm86_tests(void);
 
 // Registered only by `tests/CMakeLists.txt` when the Ballistic engine is linked, and
@@ -88,6 +89,7 @@ main(int argc, char **argv)
     pound_register_execution_tests();
     pound_register_interpreter_tests();
     pound_register_hos_kernel_tests();
+    pound_register_hos_syscall_tests();
     pound_register_sm86_tests();
     pound_register_ballistic_engine_tests();
 

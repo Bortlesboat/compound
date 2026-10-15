@@ -103,7 +103,7 @@ Compound is in **early-stage, active development**. The emulator has:
 ✓ Memory accounting and profiling
 ✓ Debug GUI with real-time diagnostics
 ✓ Logging framework
-✓ Guest CPU baseline (A64 interpreter subset, Horizon OS kernel objects)
+✓ Guest CPU baseline (A64 interpreter subset, Horizon OS kernel objects, SVC dispatch)
 ✗ Commercial title support (planned)
 ```
 
@@ -133,7 +133,8 @@ Compound is in **early-stage, active development**. The emulator has:
 ### 🖥️ Phase 4: Guest CPU & OS Emulation
 - [x] ARM64 CPU instruction dispatch (interpreter subset)
 - [x] Horizon OS kernel abstraction (objects, handles and services)
-- [ ] System call handling and scheduling
+- [x] System call handling (SVC dispatch for handles, events, yields and the tick)
+- [ ] Thread scheduling and blocking waits
 - [ ] Core OS services and memory layout
 
 ### 🎨 Phase 5: Graphics & Completeness
@@ -292,7 +293,7 @@ Native support for Linux, macOS, Windows, Android, and ARM64 architectures.
 
 - **Memory System**: `mimalloc` allocator with host accounting and ownership tracking
 - **JIT Engine**: Ballistic ARM64 recompiler for high-performance execution
-- **Guest OS**: Horizon OS kernel objects, per-process handles, and named services
+- **Guest OS**: Horizon OS kernel objects, per-process handles, named services, and SVC dispatch
 - **Debug Tools**: GUI with live reload, comprehensive logging, and profiling
 - **Validation**: Extensive unit tests and runtime checks
 - **Filesystem**: Experimental HFS0 parser and reader abstraction
@@ -317,16 +318,17 @@ under the terms of the GPL v3.
 
 - 🧱 **Foundation strengthening**: Memory systems and runtime validation
 - ⚡ **JIT experimentation**: Ballistic ARM64 integration progress
-- 🖥️ **Guest CPU and OS**: A64 interpreter subset and a Horizon OS handle/service kernel
+- 🖥️ **Guest CPU and OS**: A64 interpreter subset, a Horizon OS handle/service kernel, and SVC dispatch
 - 📁 **Filesystem work**: HFS0 parser development (experimental branches)
 - 🔐 **Crypto primitives**: SHA256 and verification systems (experimental)
 - 🐛 **Testing**: Expanded unit test coverage and CI reliability
 
 ### Next Focus
 
-1. System call handling and scheduling
-2. Vulkan render backend
-3. Commercial title compatibility
+1. Thread scheduling and blocking waits
+2. Core OS services and memory layout
+3. Vulkan render backend
+4. Commercial title compatibility
 
 ---
 
