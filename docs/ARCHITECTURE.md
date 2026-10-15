@@ -189,6 +189,43 @@ subset of opcodes (NOP, MOV, IADD3, IMAD, ISETP, LDC, EXIT, KILL) with predicate
 forms, returning `POUND_ERROR_UNSUPPORTED_INSTRUCTION` for everything else. The
 module is built into `PoundCore` and covered by `tests/test_sm86.c` (34 cases).
 
+### Horizon OS kernel — `src/core/hos/kernel.{h,c}`
+
+Horizon OS does not expose its kernel as calls that mutate global state. It exposes
+a *namespace of handles*, and every subsystem a title talks to — the filesystem, the
+applet manager, the GPU driver — is reached by connecting to a named service and then
+sending that service numbered requests. A handle is the unit of authority: a title can
+do exactly what its handles let it do.
+
+This module is that layer and nothing above it. It owns three things. **Objects** are
+kernel-side things a handle can name; this slice implements events and sessions, they
+live in one kernel-wide table, and they are reference-counted by the number of handles
+that name them, so an object outlives any one process's handle and dies only when the
+last one closes. **Handles** are one process's names for objects, so the same object has
+a different handle in each process that holds one. **Services** are the named request
+handlers a session can be opened against.
+
+A handle is `(generation << 20) | (index + 1)`, with zero reserved for "no object".
+Closing a handle frees its slot and advances the slot's generation, so a handle that
+outlived its object stops resolving instead of silently naming whatever lands in the
+slot next. Without that, a copied-around handle would eventually read another title's
+data through a name it thought it had given back — the worst kind of failure, because
+it is not a crash.
+
+Objects, services, and every process's handle table share one kernel mutex. Splitting
+it would give handle operations a lock order the object path would have to take in
+reverse, for no gain: nothing here is on the JIT dispatch path. The one place the lock
+is dropped is a service handler, which is guest policy and routinely wants to signal an
+event or send the next request, so it is called with the kernel free for re-entry.
+Services are append-only, which is what makes that safe to promise — a session stores
+its service's index, not a pointer to its entry, so nothing it holds can move or vanish.
+
+Blocking waits and a scheduler, shared-memory and port objects, and the Horizon IPC wire
+format are out of scope; each is refused rather than half-handled. The module adds
+`POUND_ERROR_INVALID_HANDLE` for a handle that names nothing — always logged, unlike the
+`POUND_ERROR_NOT_FOUND` it sits beside, because a missing service is an ordinary answer
+and a missing object never is. `tests/test_hos_kernel.c` covers it with 31 cases.
+
 ---
 
 ## Debug GUI and hot reload

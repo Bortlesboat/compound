@@ -94,6 +94,18 @@ typedef enum
     /// A translation unit could not be represented in the target module format.
     POUND_ERROR_TRANSLATION_FAILED,
 
+    // Kernel / Handle Errors
+
+    /// A handle did not name a live object in the process it was looked up in.
+    ///
+    /// Distinct from `POUND_ERROR_NOT_FOUND`, whose contract is that it never logs
+    /// because a missing *file* is an ordinary answer to a probe. A handle that names
+    /// nothing is never ordinary: it is a guest bug or an emulator bug, and the caller
+    /// wants the log line that says which handle was rejected. It is also distinct from
+    /// `POUND_ERROR_INVALID_ARGUMENT`, which reports a value that could never have been
+    /// a handle at all -- a NULL pointer, or a service name of the wrong length.
+    POUND_ERROR_INVALID_HANDLE,
+
     // Concurrency Errors
 
     /// A thread could not be waited on, or the platform refused to report on it.

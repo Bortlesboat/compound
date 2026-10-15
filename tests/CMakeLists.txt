@@ -34,6 +34,7 @@ set(POUND_TEST_SUITES
         metadata
         execution
         interpreter
+        hos_kernel
         sm86
         )
 
@@ -53,6 +54,7 @@ set(POUND_TEST_SOURCES
         test_jit_metadata.c
         test_jit_execution.c
         test_interpreter.c
+        test_hos_kernel.c
         test_sm86.c
         )
 

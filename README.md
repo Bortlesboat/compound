@@ -78,7 +78,7 @@ It is the Nintendo Switch 1 Emulator too!
 | 🐛 **Debug Tooling** | ✅ Working | GUI with live reload, comprehensive logging |
 | ⚡ **Ballistic ARM64 JIT** | 🚧 Experimental | In-progress recompiler integration |
 | 💾 **Filesystem & Crypto** | 🚧 Experimental | HFS0 parser, SHA256, verification systems |
-| 🖥️ **Guest CPU & OS** | 🚧 Experimental | A64 interpreter subset; kernel and syscalls planned |
+| 🖥️ **Guest CPU & OS** | 🚧 Experimental | A64 interpreter subset; kernel objects, handles and services |
 | 🎨 **Graphics & Audio** | 🚧 Experimental | SM86→SPIR-V translation, Vulkan backend planned |
 | 🎮 **Commercial Titles** | 🔮 Planned | Compatibility layer and title support |
 
@@ -91,7 +91,7 @@ Compound is in **early-stage, active development**. The emulator has:
 ✅ A solid **foundation** with working unit tests and presets  
 ✅ **Defensive systems** for memory safety and correctness  
 ✅ **Professional debugging** tools with GUI and instrumentation  
-🚧 **Experimental work** in JIT, crypto, and filesystem parsing  
+🚧 **Experimental work** in JIT, guest CPU and OS, and graphics translation  
 🔮 **Planned**: Guest execution, compatibility, graphics, and full Switch support  
 
 ### Current Capabilities
@@ -103,7 +103,7 @@ Compound is in **early-stage, active development**. The emulator has:
 ✓ Memory accounting and profiling
 ✓ Debug GUI with real-time diagnostics
 ✓ Logging framework
-✗ Guest CPU execution (interpreter subset landed, JIT pending)
+✓ Guest CPU baseline (A64 interpreter subset, Horizon OS kernel objects)
 ✗ Commercial title support (planned)
 ```
 
@@ -132,7 +132,7 @@ Compound is in **early-stage, active development**. The emulator has:
 
 ### 🖥️ Phase 4: Guest CPU & OS Emulation
 - [x] ARM64 CPU instruction dispatch (interpreter subset)
-- [ ] Horizon OS kernel abstraction
+- [x] Horizon OS kernel abstraction (objects, handles and services)
 - [ ] System call handling and scheduling
 - [ ] Core OS services and memory layout
 
@@ -292,6 +292,7 @@ Native support for Linux, macOS, Windows, Android, and ARM64 architectures.
 
 - **Memory System**: `mimalloc` allocator with host accounting and ownership tracking
 - **JIT Engine**: Ballistic ARM64 recompiler for high-performance execution
+- **Guest OS**: Horizon OS kernel objects, per-process handles, and named services
 - **Debug Tools**: GUI with live reload, comprehensive logging, and profiling
 - **Validation**: Extensive unit tests and runtime checks
 - **Filesystem**: Experimental HFS0 parser and reader abstraction
@@ -316,14 +317,15 @@ under the terms of the GPL v3.
 
 - 🧱 **Foundation strengthening**: Memory systems and runtime validation
 - ⚡ **JIT experimentation**: Ballistic ARM64 integration progress
+- 🖥️ **Guest CPU and OS**: A64 interpreter subset and a Horizon OS handle/service kernel
 - 📁 **Filesystem work**: HFS0 parser development (experimental branches)
 - 🔐 **Crypto primitives**: SHA256 and verification systems (experimental)
 - 🐛 **Testing**: Expanded unit test coverage and CI reliability
 
 ### Next Focus
 
-1. Horizon OS kernel abstraction
-2. Graphics pipeline (SM86→SPIR-V)
+1. System call handling and scheduling
+2. Vulkan render backend
 3. Commercial title compatibility
 
 ---

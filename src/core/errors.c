@@ -72,6 +72,9 @@ pound_error_to_string(error_t error)
         case POUND_ERROR_TRANSLATION_FAILED:
             return "POUND_ERROR_TRANSLATION_FAILED";
 
+        case POUND_ERROR_INVALID_HANDLE:
+            return "POUND_ERROR_INVALID_HANDLE";
+
         case POUND_ERROR_THREAD_FAILED:
             return "POUND_ERROR_THREAD_FAILED";
     }
