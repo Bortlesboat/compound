@@ -15,8 +15,10 @@ How Pound is put together, and why.
 
 ## Shape
 
-Pound is a C11 emulator shell with a C++ debug GUI. The guest CPU is not yet
-implemented; what exists today is the substrate it will run on.
+Pound is a C11 emulator shell with a C++ debug GUI. The guest side now reaches
+from an ARM64 interpreter through a Horizon OS kernel, system call layer and
+thread scheduler; a graphics backend and the rest of the OS surface are still
+missing, so nothing boots a title yet.
 
 ```
                              ┌──────────────────────────┐
@@ -200,12 +202,23 @@ sending that service numbered requests. A handle is the unit of authority: a tit
 do exactly what its handles let it do.
 
 This module is that layer and nothing above it. It owns three things. **Objects** are
-kernel-side things a handle can name; this slice implements events and sessions, they
-live in one kernel-wide table, and they are reference-counted by the number of handles
+kernel-side things a handle can name; this slice implements events, sessions and threads,
+they live in one kernel-wide table, and they are reference-counted by the number of handles
 that name them, so an object outlives any one process's handle and dies only when the
 last one closes. **Handles** are one process's names for objects, so the same object has
 a different handle in each process that holds one. **Services** are the named request
 handlers a session can be opened against.
+
+A thread is an object with a register file, a priority and a lifecycle, and it is the one
+object with two names on purpose. A **handle** names it inside one process and is what a
+guest may use — a title can only reach the threads its own handle table names. A **thread
+identifier** names it across the whole kernel, is never reused, and outlives the handle;
+that is what the scheduler runs on, because a title may close the handle of a thread that
+is still running and the thread keeps running. Starting a thread takes a reference on its
+own object, so closing that last handle cannot free a register file out from under a live
+thread. The `hos_kernel_thread_*` calls take identifiers and enforce no per-process
+authority, because they are the emulator's own view of a thread rather than anything a
+guest can reach.
 
 A handle is `(generation << 20) | (index + 1)`, with zero reserved for "no object".
 Closing a handle frees its slot and advances the slot's generation, so a handle that
@@ -222,16 +235,50 @@ event or send the next request, so it is called with the kernel free for re-entr
 Services are append-only, which is what makes that safe to promise — a session stores
 its service's index, not a pointer to its entry, so nothing it holds can move or vanish.
 
-Blocking waits and a scheduler, shared-memory and port objects, and the Horizon IPC wire
-format are out of scope; each is refused rather than half-handled. The module adds
-`POUND_ERROR_INVALID_HANDLE` for a handle that names nothing — always logged, unlike the
-`POUND_ERROR_NOT_FOUND` it sits beside, because a missing service is an ordinary answer
-and a missing object never is. `tests/test_hos_kernel.c` covers it with 31 cases.
+Which thread runs, and what wakes one that is parked, is not decided here: this module
+owns threads and never chooses between them. That is `hos/scheduler.{h,c}` below.
+Shared-memory and port objects, and the Horizon IPC wire format, are out of scope and each
+is refused rather than half-handled. The module adds `POUND_ERROR_INVALID_HANDLE` for a
+handle that names nothing — always logged, unlike the `POUND_ERROR_NOT_FOUND` it sits
+beside, because a missing service is an ordinary answer and a missing object never is.
+`tests/test_hos_kernel.c` covers it with 40 cases.
+
+### Horizon OS scheduler — `src/core/hos/scheduler.{h,c}`
+
+`hos/kernel.{h,c}` owns threads and never decides which one runs; this module is that
+decision, and the only thing in Pound that knows the clock. One scheduler is one guest
+core. Threads are runnable, running or parked, and the pick is the runnable thread with the
+lowest priority *number* — Horizon numbers priorities downwards, so zero is the most urgent
+— with the oldest first among equals. It hands that thread to a caller-supplied run
+function for one quantum, takes the result and repeats, which is what keeps this module
+from having to know about the interpreter or the syscall layer.
+
+A wait here is a *level*, not an edge. Most kernels deliver a signal by finding a waiter and
+waking it then and there; this one re-reads: before every decision it looks at each parked
+thread's wait set and the kernel's current answer, so signal-to-wake needs no callbacks and
+cannot lose an edge it was never given. An auto-reset event is consumed in the scheduler's
+poll, in priority order, which is what makes the higher-priority waiter the one that takes
+it.
+
+The clock is the system tick, 19.2 MHz, and the caller advances it by instructions retired.
+A thread that stopped early — a trap, a syscall, a fault — keeps its place, because a
+syscall is not a yield; only `hos_scheduler_yield` hands the core over early, and a thread
+that used its whole quantum goes to the back of its priority. When nothing is runnable but
+a deadline is pending, `hos_scheduler_step` jumps the clock to it rather than spinning,
+which is the hardware-idle model: a core with nothing to run sleeps. `hos_scheduler_step`
+reports `RAN`, `DEADLOCKED` (every remaining thread parked with no deadline and nothing
+ready — a fact about the guest worth reporting) or `FINISHED` (no threads left).
+
+The scheduler has no lock, and that is the concurrency model rather than an omission: one
+scheduler is one guest core driven by one host thread, and stepping it from two host threads
+at once is a caller's bug that a mutex here would not make correct.
+`tests/test_hos_scheduler.c` covers it with 22 cases.
 
 ### Horizon OS system calls — `src/core/hos/syscall.{h,c}`
 
 An A64 `SVC` is a trap to a numbered kernel entry point: the immediate is the number,
-`X0`–`X7` are the arguments, and `X0` carries the answer back. The interpreter stops on
+`X0`–`X7` are the arguments, and `X0` carries the answer back — either as the `Result`
+itself or as a pointer the callee writes the answer through. The interpreter stops on
 one and reports `INTERPRETER_TRAP_SVC` with the immediate; this module is the only thing
 in Pound that turns that number into work.
 
@@ -253,26 +300,50 @@ Collapsing the second into the first is the one thing this module must not do. A
 and the emulator looks like firmware that replied. A refusal is a fact about Pound; a
 `Result` is a fact about the guest.
 
-The same reasoning shapes the two calls that can block. `svcWaitSynchronization` is
-implemented for exactly the case whose correct behaviour is *not* to block: a zero timeout
-is a poll, and the real kernel answers it immediately with either a ready index or `0xEA01`
-("timeout"), so polling here produces the `Result` the hardware would, for the same reason.
-A non-zero timeout must block, and returning `0xEA01` early would be a lie the guest cannot
-detect — so it is refused. `svcSleepThread` follows the same split: the three specified
-yields (0, `-1`, `-2`) return without sleeping and are free, while a positive duration must
-block and is refused. Both become implementable when the scheduler lands.
+The same reasoning shapes the calls that answer through memory. Switch system calls do not
+all answer in `X0`: a call that returns a `Result` puts it in `W0`, but a call that returns
+an *output parameter* — the ready index of `svcWaitSynchronization`, the handle of
+`svcConnectToNamedPort` — leaves a pointer in `X0` and writes through it. `X0` is therefore
+overloaded: a pointer on entry and a `Result` on return. This module writes through the
+pointer *before* it replaces `X0`, because afterwards the address is gone. A call that
+returns nothing at all — `svcExitThread`, `svcSleepThread`, `svcFlushEntireDataCache` —
+leaves `X0` exactly as the guest left it.
+
+Blocking is where a context with a scheduler and one without differ, deliberately. A call
+that can be satisfied now never parks a thread: `svcWaitSynchronization` and a positive
+`svcSleepThread` poll first, and a wait that finds something ready — or a zero-timeout poll
+that finds nothing — completes with the `Result` the hardware would. Only a poll that finds
+nothing parks the caller and returns `HOS_SYSCALL_BLOCKED`, leaving `pc` on the `SVC` and
+the pointer in `X0` intact: the call is suspended, not finished. The scheduler owns the
+wake, and the run loop finishes the call with `hos_syscall_complete_block`, which writes the
+ready index through the pointer for `HOS_WAKE_SIGNALED`, puts `0xEA01` in `X0` for
+`HOS_WAKE_TIMED_OUT`, and touches nothing for `HOS_WAKE_SLEPT`, because a sleep returns
+nothing. Only then does `pc` step past the `SVC`. The wake reason alone says which call was
+parked, so the scheduler never has to remember a system call's registers.
+
+A context that was never given a scheduler has no clock and no run queue, so a call that
+would block — and every thread call — is refused with `POUND_ERROR_UNSUPPORTED_SYSCALL` and
+a log line: a gap, exactly like any other, and refusing is what keeps a title from spinning
+on a timeout that never happened. `svcCreateThread`, `svcStartThread`, `svcExitThread`,
+`svcGetThreadPriority`, `svcSetThreadPriority` and `svcGetThreadId` are then implemented for
+exactly the cases Horizon defines: `svcStartThread` on a thread that is not in the created
+state is `0xFA01`, produced *here* rather than by the kernel, which answers a second start
+with an error code and leaves this layer to know the `Result`. An out-of-range priority is
+a gap rather than a `Result`, because Pound has not established which word Horizon uses and
+inventing one would look like an answer.
 
 A wait over several handles treats a session as a legitimate object that is simply never
 the ready one, rather than as an error: a title waiting on a session and an event at once
 is a normal shape for a main loop, and nothing queues a message in this slice. Memory-layout
-calls, IPC, and the thread and process queries are out of scope and refused by name.
+calls, IPC, and the process queries are out of scope and refused by name.
 
 The module adds `POUND_ERROR_UNSUPPORTED_SYSCALL` for a well-formed `svc` whose number or
 feature the OS layer has not implemented — distinct from
 `POUND_ERROR_UNSUPPORTED_INSTRUCTION`, which is a fact about the decoder. The dispatch
-context carries the kernel, the process, the guest memory, and the caller's clock and core
-number rather than reading a global, so a test can drive any of them.
-`tests/test_hos_syscall.c` covers it with 23 cases.
+context carries the kernel, the process, the guest memory, the caller's clock and core
+number, and — through `hos_syscall_context_set_scheduler` — the scheduler that parks a
+blocked thread, rather than reading a global, so a test can drive any of them.
+`tests/test_hos_syscall.c` covers it with 33 cases.
 
 ---
 

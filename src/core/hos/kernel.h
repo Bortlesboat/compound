@@ -56,10 +56,12 @@
 //!
 //! # What this slice does not do
 //!
-//! - **No blocking waits and no scheduler.** `hos_process_event_wait` polls; a wait that
-//!   blocks belongs to the scheduler slice, which is what would have to park and wake the
-//!   guest thread.
-//! - **No shared-memory or port objects.** Only the two object kinds above are
+//! - **No scheduling and no blocking waits.** This module creates threads, holds their
+//!   register files and answers questions about them, but it never decides which one
+//!   runs: `hos_process_event_wait` polls, and `hos_process_wait_any` polls a set of
+//!   handles. Parking a thread and waking it is `hos/scheduler.h`, which is one layer up
+//!   and the only thing that knows the clock.
+//! - **No shared-memory or port objects.** Only the three object kinds above are
 //!   implemented. An encoding outside them is refused rather than half-handled.
 //! - **No request marshalling.** `hos_process_session_request` carries an opaque byte
 //!   span and a command number. The Horizon IPC wire format -- headers, handle
@@ -72,6 +74,7 @@
 
 #include "attributes.h"
 #include "errors.h"
+#include "guest_state.h"
 #include "sync/mutex.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -105,6 +108,35 @@
 /// Number of handles a fresh process's table holds before it first grows.
 #define HOS_PROCESS_INITIAL_HANDLES 8U
 
+/// Priority of the most urgent thread a title may ask for.
+///
+/// Horizon numbers priorities downwards: zero is the most urgent, and the scheduler
+/// always runs the lowest number among the threads that are ready. It is the opposite
+/// of the usual "higher is better", which is why every comparison in this module and
+/// the scheduler reads as an inversion until the naming catches up to it.
+#define HOS_THREAD_PRIORITY_HIGHEST 0U
+
+/// Priority of the least urgent thread, which is also the idle thread's.
+#define HOS_THREAD_PRIORITY_LOWEST 0x3FU
+
+/// Priority Horizon gives an application's main thread unless it asks for another, and
+/// the default for a thread created without one.
+#define HOS_THREAD_PRIORITY_DEFAULT 0x2CU
+
+/// The most threads a kernel's object table will hold before refusing.
+///
+/// A cap rather than a doubling forever: every thread carries a full register file, so
+/// an unbounded thread table is an unbounded allocation driven by guest requests. A
+/// title that wants more than this is not one Pound can serve, and saying so beats
+/// exhausting host memory.
+#define HOS_MAX_THREADS 1024U
+
+/// The most handles one `hos_process_wait_any` call accepts.
+///
+/// Horizon's own cap on `svcWaitSynchronization`, so a wait the kernel refuses and a wait
+/// the guest cannot express are the same size.
+#define HOS_MAX_WAIT_HANDLES 0x40U
+
 /// What a handle names.
 typedef enum
 {
@@ -113,6 +145,9 @@ typedef enum
 
     /// A live connection to a registered service.
     HOS_OBJECT_SESSION = 1,
+
+    /// A thread, with its own register file. See the thread section below.
+    HOS_OBJECT_THREAD = 2,
 } hos_object_type_t;
 
 /// What a wait on an event does to it.
@@ -125,6 +160,26 @@ typedef enum
     /// waiter. This is Horizon's default clear mode.
     HOS_EVENT_AUTO = 1,
 } hos_event_mode_t;
+
+/// How far a thread has got in its life.
+///
+/// This is the Horizon-visible lifecycle -- the part `svcCreateThread`, `svcStartThread`
+/// and `svcExitThread` move -- and deliberately says nothing about whether the thread is
+/// running right now. That is the scheduler's question, and it changes thousands of times
+/// a second; answering it here would make this table the second place that knows, and the
+/// two would disagree the first time one of them was wrong.
+typedef enum
+{
+    /// Created and named by a handle, but not yet started. Not schedulable.
+    HOS_THREAD_CREATED = 0,
+
+    /// Started. The thread is schedulable, or running, or parked on a wait.
+    HOS_THREAD_STARTED = 1,
+
+    /// Finished. The register file and the exit state stay readable for as long as a
+    /// handle names the thread, which is what lets a title join a thread it started.
+    HOS_THREAD_TERMINATED = 2,
+} hos_thread_status_t;
 
 /// A process's name for an object.
 ///
@@ -192,6 +247,14 @@ typedef struct
 
     /// Number of processes created from this kernel and not yet closed.
     uint32_t live_processes;
+
+    /// The next thread identifier to hand out.
+    ///
+    /// One counter for the whole kernel rather than one per process, because a thread
+    /// identifier is meant to be unique across the machine -- a title logs one when it is
+    /// complaining about a thread, and two processes reporting the same id would make
+    /// that log useless.
+    uint64_t next_thread_id;
 } hos_kernel_t;
 
 /// A process's handle table.
@@ -245,6 +308,11 @@ uint32_t hos_kernel_object_count(const hos_kernel_t *POUND_RESTRICT kernel);
 
 /// Number of processes created from this kernel and not yet closed.
 uint32_t hos_kernel_live_process_count(const hos_kernel_t *POUND_RESTRICT kernel);
+
+/// Number of live thread objects, summed over every process.
+///
+/// For assertions and diagnostics, like `hos_kernel_object_count`.
+uint32_t hos_kernel_thread_count(const hos_kernel_t *POUND_RESTRICT kernel);
 
 // -----------------------------------------------------------------------------
 // Services
@@ -420,9 +488,156 @@ error_t hos_process_event_wait(hos_process_t *POUND_RESTRICT process,
                                bool *POUND_RESTRICT         out_signaled);
 
 // -----------------------------------------------------------------------------
-// Sessions
+// Waits
 // -----------------------------------------------------------------------------
 
+/// Polls a set of handles and reports the first one that is ready.
+///
+/// This is one wait, not a loop: it resolves every handle, and the first that is ready
+/// wins. An auto-reset event that is ready is consumed here, so the signal belongs to the
+/// caller and cannot be seen by a second waiter -- which is what makes "one signal wakes
+/// one waiter" true even though nothing blocks.
+///
+/// A session is a legitimate thing to wait on and is reported as never ready, because
+/// nothing queues a message on one in this slice. That is deliberately not an error: a
+/// title waiting on a session and an event together is a normal shape for a main loop.
+///
+/// A thread is ready once it has terminated, which is how a title joins one: waiting on a
+/// thread handle and being woken when it exits is a level rather than an edge, so it needs
+/// no signal and nothing to consume.
+///
+/// On `POUND_SUCCESS`, `*out_ready` says whether anything was ready and, when it was,
+/// `*out_index` is the position in `handles` of the one that was. On a timeout the index
+/// is left alone: there is no index to report, and a stale one would point the guest at a
+/// handle it never asked about.
+///
+/// Returns `POUND_ERROR_INVALID_HANDLE` when a handle in the array names nothing -- the
+/// wait can never be satisfied, so it is the call's failure rather than something to skip
+/// past -- `POUND_ERROR_INVALID_ARGUMENT` for a NULL argument or a count of zero or above
+/// `HOS_MAX_WAIT_HANDLES`, and `POUND_ERROR_NOT_INITIALIZED` when the process is not open.
+error_t hos_process_wait_any(const hos_process_t *POUND_RESTRICT process,
+                             const hos_handle_t *POUND_RESTRICT handles,
+                             uint32_t                          count,
+                             uint32_t *POUND_RESTRICT          out_index,
+                             bool *POUND_RESTRICT              out_ready);
+
+// -----------------------------------------------------------------------------
+// Threads
+// -----------------------------------------------------------------------------
+//
+// A thread has two names, and the split matters.
+//
+// A **handle** names a thread inside one process, so it is what a syscall must use: a
+// title can only reach the threads its own handle table names, which is the whole point
+// of a handle being the unit of authority. `hos_process_create_thread` mints one and
+// `hos_process_thread_id` resolves one to the other name.
+//
+// A **thread identifier** names a thread across the whole kernel, is never reused, and
+// outlives the handle. It is what the scheduler uses, and it has to be: a title may close
+// the handle of a thread that is still running -- Horizon allows it, and the thread keeps
+// running, because the kernel keeps a reference on its own behalf -- and a scheduler
+// that knew such a thread only by handle would lose it mid-run. The `hos_kernel_thread_*`
+// calls below therefore take identifiers and enforce no per-process authority, because
+// they are the emulator's own view of a thread rather than anything a guest can reach.
+// No syscall goes through them.
+
+/// Creates a thread and returns a handle to it, in the `HOS_THREAD_CREATED` state.
+///
+/// `initial_state` is copied, not retained: it is the thread's register file at the moment
+/// it is started, so a caller builds one with the entry point in `pc`, the argument in
+/// `x[0]` and the stack pointer in `x[31]`, and may then forget it. A thread that is
+/// created but never started is still an object: closing its last handle destroys it and
+/// it never runs.
+///
+/// `priority` must be between `HOS_THREAD_PRIORITY_HIGHEST` and
+/// `HOS_THREAD_PRIORITY_LOWEST`.
+///
+/// Returns `POUND_ERROR_INVALID_ARGUMENT` for a NULL argument, a priority out of range, or
+/// a kernel already holding `HOS_MAX_THREADS`, plus the open-state and allocation errors
+/// the other handle-creating calls list.
+error_t hos_process_create_thread(hos_process_t *POUND_RESTRICT       process,
+                                  const guest_state_t *POUND_RESTRICT initial_state,
+                                  uint32_t                           priority,
+                                  hos_handle_t *POUND_RESTRICT       out_handle);
+
+/// Resolves a thread handle to the thread's kernel-wide identifier.
+///
+/// Also the way a caller asks "is this handle a thread", since a handle naming anything
+/// else is refused. Returns the invalid-handle, wrong-type and open-state errors.
+error_t hos_process_thread_id(const hos_process_t *POUND_RESTRICT process,
+                              hos_handle_t                        handle,
+                              uint64_t *POUND_RESTRICT            out_id);
+
+/// Finds a thread by identifier and reports how far it has got.
+///
+/// Returns `POUND_ERROR_NOT_FOUND` -- without logging, as everywhere -- when no live
+/// thread has that identifier, which is an ordinary answer here: it is how the scheduler
+/// learns that a thread it was watching has finished and been freed. The register file and
+/// the priority stay readable for as long as the thread lives, including after it has
+/// terminated, which is what lets a title inspect a thread it started.
+error_t hos_kernel_thread_status(const hos_kernel_t *POUND_RESTRICT kernel,
+                                 uint64_t                           id,
+                                 hos_thread_status_t *POUND_RESTRICT out_status);
+
+/// Starts a thread, making it schedulable.
+///
+/// Takes a reference on the thread's object on the thread's own behalf, released by
+/// `hos_kernel_thread_terminate` or by the process closing. That is what makes closing the
+/// last *handle* to a running thread harmless: the thread keeps itself alive until it
+/// finishes, exactly as Horizon's does. Without it, a title that closed a thread's handle
+/// and then let it run would have the register file freed under its own feet.
+///
+/// Returns `POUND_ERROR_INVALID_ARGUMENT` when the thread has already been started or has
+/// already terminated -- a caller that wants Horizon's `Result` for a second start asks
+/// `hos_kernel_thread_status` first -- plus the not-found and kernel-state errors.
+error_t hos_kernel_thread_start(hos_kernel_t *POUND_RESTRICT kernel, uint64_t id);
+
+/// Marks a started thread as terminated and releases the reference `start` took.
+///
+/// The register file and priority stay readable while anything still names the thread, so
+/// a thread that has finished can still be inspected and its handle still closed.
+/// Terminating an already-terminated thread is a success, because two paths can
+/// legitimately reach the same finish -- the thread exiting and its process closing -- and
+/// the second must not be an error.
+///
+/// Returns `POUND_ERROR_INVALID_ARGUMENT` for a thread that was never started, plus the
+/// not-found and kernel-state errors.
+error_t hos_kernel_thread_terminate(hos_kernel_t *POUND_RESTRICT kernel, uint64_t id);
+
+/// Copies a thread's register file out.
+///
+/// A copy rather than a pointer into the object table, because that table grows by
+/// doubling and moves every slot: a caller holding a pointer across any other call would
+/// be holding one into freed memory.
+error_t hos_kernel_thread_context(const hos_kernel_t *POUND_RESTRICT kernel,
+                                  uint64_t                           id,
+                                  guest_state_t *POUND_RESTRICT       out_state);
+
+/// Stores a thread's register file back, after it has run.
+///
+/// The whole file is written, so a caller must have kept it from
+/// `hos_kernel_thread_context` rather than editing a fresh one.
+error_t hos_kernel_thread_set_context(hos_kernel_t *POUND_RESTRICT       kernel,
+                                      uint64_t                           id,
+                                      const guest_state_t *POUND_RESTRICT state);
+
+/// Reports a thread's priority.
+error_t hos_kernel_thread_priority(const hos_kernel_t *POUND_RESTRICT kernel,
+                                   uint64_t                           id,
+                                   uint32_t *POUND_RESTRICT           out_priority);
+
+/// Sets a thread's priority.
+///
+/// Valid on a thread at any point in its life, including one that has terminated: Horizon
+/// keeps the last priority a thread held, and a title that lowers a joining thread's
+/// priority before closing it is not doing anything wrong.
+error_t hos_kernel_thread_set_priority(hos_kernel_t *POUND_RESTRICT kernel,
+                                       uint64_t                     id,
+                                       uint32_t                     priority);
+
+// -----------------------------------------------------------------------------
+// Sessions
+// -----------------------------------------------------------------------------
 /// Sends `command` and `request` over a session and collects the reply.
 ///
 /// `response` and `response_capacity` describe the caller's buffer and may be NULL and

@@ -36,6 +36,7 @@ set(POUND_TEST_SUITES
         interpreter
         hos_kernel
         hos_syscall
+        hos_scheduler
         sm86
         )
 
@@ -57,6 +58,7 @@ set(POUND_TEST_SOURCES
         test_interpreter.c
         test_hos_kernel.c
         test_hos_syscall.c
+        test_hos_scheduler.c
         test_sm86.c
         )
 

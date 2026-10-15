@@ -103,7 +103,7 @@ Compound is in **early-stage, active development**. The emulator has:
 ✓ Memory accounting and profiling
 ✓ Debug GUI with real-time diagnostics
 ✓ Logging framework
-✓ Guest CPU baseline (A64 interpreter subset, Horizon OS kernel objects, SVC dispatch)
+✓ Guest CPU baseline (A64 interpreter subset, Horizon OS kernel objects, SVC dispatch, thread scheduler)
 ✗ Commercial title support (planned)
 ```
 
@@ -134,7 +134,7 @@ Compound is in **early-stage, active development**. The emulator has:
 - [x] ARM64 CPU instruction dispatch (interpreter subset)
 - [x] Horizon OS kernel abstraction (objects, handles and services)
 - [x] System call handling (SVC dispatch for handles, events, yields and the tick)
-- [ ] Thread scheduling and blocking waits
+- [x] Thread scheduling and blocking waits
 - [ ] Core OS services and memory layout
 
 ### 🎨 Phase 5: Graphics & Completeness
@@ -293,7 +293,7 @@ Native support for Linux, macOS, Windows, Android, and ARM64 architectures.
 
 - **Memory System**: `mimalloc` allocator with host accounting and ownership tracking
 - **JIT Engine**: Ballistic ARM64 recompiler for high-performance execution
-- **Guest OS**: Horizon OS kernel objects, per-process handles, named services, and SVC dispatch
+- **Guest OS**: Horizon OS kernel objects, per-process handles, named services, SVC dispatch, and a priority round-robin thread scheduler with blocking waits
 - **Debug Tools**: GUI with live reload, comprehensive logging, and profiling
 - **Validation**: Extensive unit tests and runtime checks
 - **Filesystem**: Experimental HFS0 parser and reader abstraction
@@ -318,17 +318,16 @@ under the terms of the GPL v3.
 
 - 🧱 **Foundation strengthening**: Memory systems and runtime validation
 - ⚡ **JIT experimentation**: Ballistic ARM64 integration progress
-- 🖥️ **Guest CPU and OS**: A64 interpreter subset, a Horizon OS handle/service kernel, and SVC dispatch
+- 🖥️ **Guest CPU and OS**: A64 interpreter subset, a Horizon OS handle/service kernel, SVC dispatch, and a thread scheduler with blocking waits
 - 📁 **Filesystem work**: HFS0 parser development (experimental branches)
 - 🔐 **Crypto primitives**: SHA256 and verification systems (experimental)
 - 🐛 **Testing**: Expanded unit test coverage and CI reliability
 
 ### Next Focus
 
-1. Thread scheduling and blocking waits
-2. Core OS services and memory layout
-3. Vulkan render backend
-4. Commercial title compatibility
+1. Core OS services and memory layout
+2. Vulkan render backend
+3. Commercial title compatibility
 
 ---
 

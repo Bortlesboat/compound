@@ -23,8 +23,40 @@
 static const char *
 object_kind_name(hos_object_type_t type)
 {
-    return (type == HOS_OBJECT_EVENT) ? "an event" : "a session";
+    switch (type)
+    {
+        case HOS_OBJECT_EVENT: return "an event";
+        case HOS_OBJECT_THREAD: return "a thread";
+        case HOS_OBJECT_SESSION: return "a session";
+    }
+
+    return "an object of no known kind";
 }
+
+/// A thread's own state, carried inside the object slot that names it.
+///
+/// Embedded rather than pointed at, so the record's lifetime is exactly the slot's: there
+/// is no second allocation to fail, nothing to free on destruction, and no window in which
+/// a handle resolves to an object whose thread has already gone. The cost is that every
+/// object slot is as large as a register file, which a title with a few hundred sessions
+/// pays a few hundred kilobytes for -- and the alternative, a table of pointers that has
+/// to be kept in step with the object table, is where that kind of bug lives.
+struct hos_thread
+{
+    /// The register file: thirty-two registers, the program counter, the condition
+    /// flags. Copied in at creation, out and back by the thread accessors, and owned by
+    /// nobody but this slot.
+    guest_state_t state;
+
+    /// Kernel-wide identifier. Never reused, so it outlives the thread it names.
+    uint64_t id;
+
+    /// The thread's priority, in Horizon's downwards numbering.
+    uint32_t priority;
+
+    /// Where the thread is in its life.
+    hos_thread_status_t status;
+};
 
 /// One object slot, in the kernel's table.
 ///
@@ -38,6 +70,10 @@ struct hos_object
 
     /// How many handles name this slot, summed over every process. Zero means the
     /// slot is free.
+    ///
+    /// For a started thread this count includes one reference taken by the thread on its
+    /// own behalf and released when it terminates -- see `hos_process_thread_start` --
+    /// which is why a thread cannot be freed while it is still able to run.
     uint32_t references;
 
     /// Index of the service this session is connected to. Meaningful only when
@@ -50,6 +86,9 @@ struct hos_object
 
     /// Whether the event is currently signalled.
     bool event_signaled;
+
+    /// The thread. Meaningful only when `type` is `HOS_OBJECT_THREAD`.
+    struct hos_thread thread;
 };
 
 /// One service entry, in the kernel's append-only registry.
@@ -524,6 +563,25 @@ service_index_of(const hos_kernel_t *POUND_RESTRICT kernel, const char *POUND_RE
     return UINT32_MAX;
 }
 
+/// Counts the live thread objects. Must be called with the kernel lock held.
+static uint32_t
+count_threads_locked(const hos_kernel_t *POUND_RESTRICT kernel)
+{
+    uint32_t count = 0U;
+
+    for (uint32_t index = 0U; index < kernel->object_capacity; index++)
+    {
+        const struct hos_object *object = &kernel->objects[index];
+
+        if ((object->references > 0U) && (object->type == HOS_OBJECT_THREAD))
+        {
+            count++;
+        }
+    }
+
+    return count;
+}
+
 // -----------------------------------------------------------------------------
 // Kernel lifecycle
 // -----------------------------------------------------------------------------
@@ -586,7 +644,10 @@ hos_kernel_init(hos_kernel_t *POUND_RESTRICT kernel)
     memset(kernel->services, 0, (size_t)HOS_KERNEL_INITIAL_SERVICES * sizeof(struct hos_service));
     kernel->service_capacity = HOS_KERNEL_INITIAL_SERVICES;
 
-    kernel->magic = HOS_KERNEL_MAGIC;
+    // One-based, so that a zeroed `uint64_t` is "no thread" the same way a zero handle
+    // names no object.
+    kernel->next_thread_id = 1U;
+    kernel->magic          = HOS_KERNEL_MAGIC;
 
     POUND_LOG_INFO(&thread_logger,
                    "Horizon OS kernel ready: %u object slots, %u service entries.",
@@ -676,6 +737,23 @@ hos_kernel_live_process_count(const hos_kernel_t *POUND_RESTRICT kernel)
 
     mutex_lock(&mutable_kernel->lock);
     const uint32_t count = mutable_kernel->live_processes;
+    mutex_unlock(&mutable_kernel->lock);
+
+    return count;
+}
+
+uint32_t
+hos_kernel_thread_count(const hos_kernel_t *POUND_RESTRICT kernel)
+{
+    if (require_kernel(kernel, "hos_kernel_thread_count") != POUND_SUCCESS)
+    {
+        return 0U;
+    }
+
+    hos_kernel_t *mutable_kernel = (hos_kernel_t *)(uintptr_t)kernel;
+
+    mutex_lock(&mutable_kernel->lock);
+    const uint32_t count = count_threads_locked(mutable_kernel);
     mutex_unlock(&mutable_kernel->lock);
 
     return count;
@@ -890,11 +968,25 @@ hos_process_close(hos_process_t *POUND_RESTRICT process)
     {
         struct hos_handle_slot *slot = &process->handles[index];
 
-        if (slot->in_use)
+        if (!slot->in_use)
         {
-            release_object(kernel, slot->object_index);
-            released++;
+            continue;
         }
+
+        const struct hos_object *object = &kernel->objects[slot->object_index];
+
+        if ((object->type == HOS_OBJECT_THREAD) && (object->thread.status == HOS_THREAD_STARTED))
+        {
+            // A started thread holds a reference on its own object, so closing the process
+            // has to release that one too -- otherwise a running thread's object would leak
+            // with nothing left able to run or finish it. Marking it terminated first is what
+            // makes the state honest for any handle another process might still hold.
+            kernel->objects[slot->object_index].thread.status = HOS_THREAD_TERMINATED;
+            release_object(kernel, slot->object_index);
+        }
+
+        release_object(kernel, slot->object_index);
+        released++;
     }
 
     memory_subsystem_free(process->handles);
@@ -1345,6 +1437,501 @@ hos_process_event_wait(hos_process_t *POUND_RESTRICT process,
             // it consumes it. A manual-reset event is a state that stays until cleared.
             event->event_signaled = false;
         }
+    }
+
+    mutex_unlock(&kernel->lock);
+    return error;
+}
+
+// -----------------------------------------------------------------------------
+// Waits
+// -----------------------------------------------------------------------------
+
+error_t
+hos_process_wait_any(const hos_process_t *POUND_RESTRICT process,
+                     const hos_handle_t *POUND_RESTRICT handles,
+                     uint32_t                          count,
+                     uint32_t *POUND_RESTRICT          out_index,
+                     bool *POUND_RESTRICT              out_ready)
+{
+    if (process == NULL)
+    {
+        POUND_LOG_ERROR(&thread_logger, "Aborting hos_process_wait_any: process is NULL.");
+        return POUND_ERROR_INVALID_ARGUMENT;
+    }
+
+    if ((handles == NULL) || (out_index == NULL) || (out_ready == NULL))
+    {
+        POUND_LOG_ERROR(&thread_logger,
+                        "Aborting hos_process_wait_any: handles, out_index or out_ready is NULL.");
+        return POUND_ERROR_INVALID_ARGUMENT;
+    }
+
+    if ((count == 0U) || (count > HOS_MAX_WAIT_HANDLES))
+    {
+        POUND_LOG_ERROR(&thread_logger,
+                        "Aborting hos_process_wait_any: waiting on %u handles; the range is 1 to %u.",
+                        (unsigned int)count,
+                        (unsigned int)HOS_MAX_WAIT_HANDLES);
+        return POUND_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (!hos_process_is_open(process))
+    {
+        POUND_LOG_ERROR(&thread_logger,
+                        "Aborting hos_process_wait_any: the process was never created, or was already "
+                        "closed.");
+        return POUND_ERROR_NOT_INITIALIZED;
+    }
+
+    hos_process_t *mutable_process = (hos_process_t *)(uintptr_t)process;
+    hos_kernel_t  *kernel          = mutable_process->kernel;
+
+    mutex_lock(&kernel->lock);
+
+    *out_ready = false;
+
+    for (uint32_t position = 0U; position < count; position++)
+    {
+        uint32_t object_index = 0U;
+
+        // Not `resolve_handle_as`: a session is a legitimate thing to wait on, it simply is
+        // never the ready one, so the kind is inspected rather than required.
+        const error_t error = resolve_handle(mutable_process, handles[position], &object_index);
+
+        if (error != POUND_SUCCESS)
+        {
+            mutex_unlock(&kernel->lock);
+            return error;
+        }
+
+        struct hos_object *object = &kernel->objects[object_index];
+
+        if (object->type == HOS_OBJECT_THREAD)
+        {
+            // A thread becomes ready by finishing, which is how a join works. There is
+            // nothing to consume: it stays ready, so a second waiter on the same thread is
+            // woken too rather than being left behind by the first.
+            if (object->thread.status != HOS_THREAD_TERMINATED)
+            {
+                continue;
+            }
+        }
+        else if ((object->type != HOS_OBJECT_EVENT) || !object->event_signaled)
+        {
+            continue;
+        }
+        else if (object->event_mode == HOS_EVENT_AUTO)
+        {
+            // The signal belongs to the waiter that observed it, which is what makes "one
+            // signal wakes one waiter" true even though nothing here blocks.
+            object->event_signaled = false;
+        }
+
+        *out_index = position;
+        *out_ready = true;
+
+        mutex_unlock(&kernel->lock);
+        return POUND_SUCCESS;
+    }
+
+    mutex_unlock(&kernel->lock);
+    return POUND_SUCCESS;
+}
+
+// -----------------------------------------------------------------------------
+// Threads
+// -----------------------------------------------------------------------------
+
+error_t
+hos_process_create_thread(hos_process_t *POUND_RESTRICT       process,
+                          const guest_state_t *POUND_RESTRICT initial_state,
+                          uint32_t                           priority,
+                          hos_handle_t *POUND_RESTRICT       out_handle)
+{
+    if (process == NULL)
+    {
+        POUND_LOG_ERROR(&thread_logger, "Aborting hos_process_create_thread: process is NULL.");
+        return POUND_ERROR_INVALID_ARGUMENT;
+    }
+
+    if ((initial_state == NULL) || (out_handle == NULL))
+    {
+        POUND_LOG_ERROR(&thread_logger,
+                        "Aborting hos_process_create_thread: initial_state or out_handle is NULL.");
+        return POUND_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (priority > HOS_THREAD_PRIORITY_LOWEST)
+    {
+        POUND_LOG_ERROR(&thread_logger,
+                        "Aborting hos_process_create_thread: priority %u is outside %u to %u.",
+                        (unsigned int)priority,
+                        (unsigned int)HOS_THREAD_PRIORITY_HIGHEST,
+                        (unsigned int)HOS_THREAD_PRIORITY_LOWEST);
+        return POUND_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (!hos_process_is_open(process))
+    {
+        POUND_LOG_ERROR(&thread_logger,
+                        "Aborting hos_process_create_thread: the process was never created, or was already "
+                        "closed.");
+        return POUND_ERROR_NOT_INITIALIZED;
+    }
+
+    hos_kernel_t *kernel = process->kernel;
+    mutex_lock(&kernel->lock);
+
+    if (count_threads_locked(kernel) >= HOS_MAX_THREADS)
+    {
+        POUND_LOG_ERROR(&thread_logger,
+                        "Refusing to create a Horizon OS thread: the kernel already holds its maximum of "
+                        "%u.",
+                        (unsigned int)HOS_MAX_THREADS);
+        mutex_unlock(&kernel->lock);
+        return POUND_ERROR_ALLOCATION_FAILED;
+    }
+
+    uint32_t object_index = 0U;
+    error_t  error        = allocate_object(kernel, HOS_OBJECT_THREAD, &object_index);
+
+    if (error == POUND_SUCCESS)
+    {
+        struct hos_thread *thread = &kernel->objects[object_index].thread;
+
+        thread->state    = *initial_state;
+        thread->priority = priority;
+        thread->status   = HOS_THREAD_CREATED;
+        thread->id       = kernel->next_thread_id++;
+
+        error = allocate_handle(process, object_index, out_handle);
+    }
+
+    mutex_unlock(&kernel->lock);
+    return error;
+}
+
+error_t
+hos_process_thread_id(const hos_process_t *POUND_RESTRICT process,
+                      hos_handle_t                        handle,
+                      uint64_t *POUND_RESTRICT            out_id)
+{
+    if (process == NULL)
+    {
+        POUND_LOG_ERROR(&thread_logger, "Aborting hos_process_thread_id: process is NULL.");
+        return POUND_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (out_id == NULL)
+    {
+        POUND_LOG_ERROR(&thread_logger, "Aborting hos_process_thread_id: out_id is NULL.");
+        return POUND_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (!hos_process_is_open(process))
+    {
+        POUND_LOG_ERROR(&thread_logger,
+                        "Aborting hos_process_thread_id: the process was never created, or was already "
+                        "closed.");
+        return POUND_ERROR_NOT_INITIALIZED;
+    }
+
+    hos_process_t *mutable_process = (hos_process_t *)(uintptr_t)process;
+    hos_kernel_t  *kernel          = mutable_process->kernel;
+
+    mutex_lock(&kernel->lock);
+
+    uint32_t      object_index = 0U;
+    const error_t error = resolve_handle_as(mutable_process, handle, HOS_OBJECT_THREAD, &object_index);
+
+    if (error == POUND_SUCCESS)
+    {
+        *out_id = kernel->objects[object_index].thread.id;
+    }
+
+    mutex_unlock(&kernel->lock);
+    return error;
+}
+
+/// Finds the live thread object with `id`.
+///
+/// Must be called with the kernel lock held. A miss does not log: the scheduler asks about
+/// threads it is watching many times a second, and "that one has finished" is the answer it
+/// is built to receive, not a fault to report.
+static error_t
+find_thread_locked(const hos_kernel_t *POUND_RESTRICT kernel, uint64_t id, uint32_t *POUND_RESTRICT out_object_index)
+{
+    for (uint32_t index = 0U; index < kernel->object_capacity; index++)
+    {
+        const struct hos_object *object = &kernel->objects[index];
+
+        if ((object->references > 0U) && (object->type == HOS_OBJECT_THREAD) && (object->thread.id == id))
+        {
+            *out_object_index = index;
+            return POUND_SUCCESS;
+        }
+    }
+
+    return POUND_ERROR_NOT_FOUND;
+}
+
+error_t
+hos_kernel_thread_status(const hos_kernel_t *POUND_RESTRICT     kernel,
+                         uint64_t                              id,
+                         hos_thread_status_t *POUND_RESTRICT   out_status)
+{
+    const error_t kernel_error = require_kernel(kernel, "hos_kernel_thread_status");
+
+    if (kernel_error != POUND_SUCCESS)
+    {
+        return kernel_error;
+    }
+
+    if (out_status == NULL)
+    {
+        POUND_LOG_ERROR(&thread_logger, "Aborting hos_kernel_thread_status: out_status is NULL.");
+        return POUND_ERROR_INVALID_ARGUMENT;
+    }
+
+    hos_kernel_t *mutable_kernel = (hos_kernel_t *)(uintptr_t)kernel;
+
+    mutex_lock(&mutable_kernel->lock);
+
+    uint32_t      object_index = 0U;
+    const error_t error        = find_thread_locked(mutable_kernel, id, &object_index);
+
+    if (error == POUND_SUCCESS)
+    {
+        *out_status = mutable_kernel->objects[object_index].thread.status;
+    }
+
+    mutex_unlock(&mutable_kernel->lock);
+    return error;
+}
+
+error_t
+hos_kernel_thread_start(hos_kernel_t *POUND_RESTRICT kernel, uint64_t id)
+{
+    const error_t kernel_error = require_kernel(kernel, "hos_kernel_thread_start");
+
+    if (kernel_error != POUND_SUCCESS)
+    {
+        return kernel_error;
+    }
+
+    mutex_lock(&kernel->lock);
+
+    uint32_t      object_index = 0U;
+    const error_t error        = find_thread_locked(kernel, id, &object_index);
+
+    if (error != POUND_SUCCESS)
+    {
+        mutex_unlock(&kernel->lock);
+        return error;
+    }
+
+    struct hos_object *object = &kernel->objects[object_index];
+
+    if (object->thread.status != HOS_THREAD_CREATED)
+    {
+        POUND_LOG_ERROR(&thread_logger,
+                        "Refused to start thread %llu: it is already %s.",
+                        (unsigned long long)id,
+                        (object->thread.status == HOS_THREAD_STARTED) ? "started" : "terminated");
+        mutex_unlock(&kernel->lock);
+        return POUND_ERROR_INVALID_ARGUMENT;
+    }
+
+    object->thread.status = HOS_THREAD_STARTED;
+
+    // The thread's own reference. Taken directly rather than through `allocate_handle`,
+    // because there is no new handle: this one keeps the object -- and the register file
+    // inside it -- alive while the thread is able to run, so the guest closing its last
+    // handle to a live thread does not free the state under it.
+    object->references++;
+
+    mutex_unlock(&kernel->lock);
+    return POUND_SUCCESS;
+}
+
+error_t
+hos_kernel_thread_terminate(hos_kernel_t *POUND_RESTRICT kernel, uint64_t id)
+{
+    const error_t kernel_error = require_kernel(kernel, "hos_kernel_thread_terminate");
+
+    if (kernel_error != POUND_SUCCESS)
+    {
+        return kernel_error;
+    }
+
+    mutex_lock(&kernel->lock);
+
+    uint32_t      object_index = 0U;
+    const error_t error        = find_thread_locked(kernel, id, &object_index);
+
+    if (error != POUND_SUCCESS)
+    {
+        mutex_unlock(&kernel->lock);
+        return error;
+    }
+
+    struct hos_object *object = &kernel->objects[object_index];
+
+    if (object->thread.status == HOS_THREAD_CREATED)
+    {
+        POUND_LOG_ERROR(&thread_logger,
+                        "Refused to terminate thread %llu: it was never started.",
+                        (unsigned long long)id);
+        mutex_unlock(&kernel->lock);
+        return POUND_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (object->thread.status == HOS_THREAD_STARTED)
+    {
+        // Write the status before releasing: the release cannot free the slot while a
+        // handle names the thread, but the order is the one that stays correct if that
+        // ever stops being true.
+        object->thread.status = HOS_THREAD_TERMINATED;
+        release_object(kernel, object_index);
+
+        POUND_LOG_INFO(&thread_logger,
+                       "Horizon OS thread %llu terminated.",
+                       (unsigned long long)id);
+    }
+
+    mutex_unlock(&kernel->lock);
+    return POUND_SUCCESS;
+}
+
+error_t
+hos_kernel_thread_context(const hos_kernel_t *POUND_RESTRICT kernel,
+                          uint64_t                          id,
+                          guest_state_t *POUND_RESTRICT     out_state)
+{
+    const error_t kernel_error = require_kernel(kernel, "hos_kernel_thread_context");
+
+    if (kernel_error != POUND_SUCCESS)
+    {
+        return kernel_error;
+    }
+
+    if (out_state == NULL)
+    {
+        POUND_LOG_ERROR(&thread_logger, "Aborting hos_kernel_thread_context: out_state is NULL.");
+        return POUND_ERROR_INVALID_ARGUMENT;
+    }
+
+    hos_kernel_t *mutable_kernel = (hos_kernel_t *)(uintptr_t)kernel;
+
+    mutex_lock(&mutable_kernel->lock);
+
+    uint32_t      object_index = 0U;
+    const error_t error        = find_thread_locked(mutable_kernel, id, &object_index);
+
+    if (error == POUND_SUCCESS)
+    {
+        *out_state = mutable_kernel->objects[object_index].thread.state;
+    }
+
+    mutex_unlock(&mutable_kernel->lock);
+    return error;
+}
+
+error_t
+hos_kernel_thread_set_context(hos_kernel_t *POUND_RESTRICT       kernel,
+                              uint64_t                           id,
+                              const guest_state_t *POUND_RESTRICT state)
+{
+    const error_t kernel_error = require_kernel(kernel, "hos_kernel_thread_set_context");
+
+    if (kernel_error != POUND_SUCCESS)
+    {
+        return kernel_error;
+    }
+
+    if (state == NULL)
+    {
+        POUND_LOG_ERROR(&thread_logger, "Aborting hos_kernel_thread_set_context: state is NULL.");
+        return POUND_ERROR_INVALID_ARGUMENT;
+    }
+
+    mutex_lock(&kernel->lock);
+
+    uint32_t      object_index = 0U;
+    const error_t error        = find_thread_locked(kernel, id, &object_index);
+
+    if (error == POUND_SUCCESS)
+    {
+        kernel->objects[object_index].thread.state = *state;
+    }
+
+    mutex_unlock(&kernel->lock);
+    return error;
+}
+
+error_t
+hos_kernel_thread_priority(const hos_kernel_t *POUND_RESTRICT kernel,
+                           uint64_t                           id,
+                           uint32_t *POUND_RESTRICT           out_priority)
+{
+    const error_t kernel_error = require_kernel(kernel, "hos_kernel_thread_priority");
+
+    if (kernel_error != POUND_SUCCESS)
+    {
+        return kernel_error;
+    }
+
+    if (out_priority == NULL)
+    {
+        POUND_LOG_ERROR(&thread_logger, "Aborting hos_kernel_thread_priority: out_priority is NULL.");
+        return POUND_ERROR_INVALID_ARGUMENT;
+    }
+
+    hos_kernel_t *mutable_kernel = (hos_kernel_t *)(uintptr_t)kernel;
+
+    mutex_lock(&mutable_kernel->lock);
+
+    uint32_t      object_index = 0U;
+    const error_t error        = find_thread_locked(mutable_kernel, id, &object_index);
+
+    if (error == POUND_SUCCESS)
+    {
+        *out_priority = mutable_kernel->objects[object_index].thread.priority;
+    }
+
+    mutex_unlock(&mutable_kernel->lock);
+    return error;
+}
+
+error_t
+hos_kernel_thread_set_priority(hos_kernel_t *POUND_RESTRICT kernel, uint64_t id, uint32_t priority)
+{
+    const error_t kernel_error = require_kernel(kernel, "hos_kernel_thread_set_priority");
+
+    if (kernel_error != POUND_SUCCESS)
+    {
+        return kernel_error;
+    }
+
+    if (priority > HOS_THREAD_PRIORITY_LOWEST)
+    {
+        POUND_LOG_ERROR(&thread_logger,
+                        "Aborting hos_kernel_thread_set_priority: priority %u is outside %u to %u.",
+                        (unsigned int)priority,
+                        (unsigned int)HOS_THREAD_PRIORITY_HIGHEST,
+                        (unsigned int)HOS_THREAD_PRIORITY_LOWEST);
+        return POUND_ERROR_INVALID_ARGUMENT;
+    }
+
+    mutex_lock(&kernel->lock);
+
+    uint32_t      object_index = 0U;
+    const error_t error        = find_thread_locked(kernel, id, &object_index);
+
+    if (error == POUND_SUCCESS)
+    {
+        kernel->objects[object_index].thread.priority = priority;
     }
 
     mutex_unlock(&kernel->lock);

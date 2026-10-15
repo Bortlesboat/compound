@@ -1112,6 +1112,379 @@ POUND_TEST(hos_kernel, handler_may_re_enter_the_kernel)
 }
 
 // -----------------------------------------------------------------------------
+// Threads and waits
+// -----------------------------------------------------------------------------
+
+/// Builds a thread state whose registers make it obvious in an assertion.
+static guest_state_t
+thread_state(uint64_t entry, uint64_t argument, uint64_t stack)
+{
+    guest_state_t state;
+
+    POUND_CHECK_EQ_U64(guest_state_init(&state), POUND_SUCCESS);
+
+    state.pc    = entry;
+    state.x[0]  = argument;
+    state.x[31] = stack;
+    return state;
+}
+
+/// Creates a thread on the shared process, checking that it worked.
+///
+/// POUND_CHECK rather than POUND_REQUIRE, because this returns a value; a failure leaves
+/// the caller with the invalid handle, which fails its own assertions too.
+static hos_handle_t
+create_test_thread(uint64_t entry, uint32_t priority)
+{
+    const guest_state_t initial = thread_state(entry, 0x42U, 0x8000U);
+    hos_handle_t        thread  = HOS_HANDLE_INVALID;
+
+    POUND_CHECK_EQ_U64(hos_process_create_thread(&g_process, &initial, priority, &thread),
+                       POUND_SUCCESS);
+    return thread;
+}
+
+POUND_TEST(hos_kernel, thread_creation_and_identity)
+{
+    machine_reset();
+
+    const guest_state_t initial = thread_state(0x1000U, 0x42U, 0x8000U);
+    hos_handle_t        thread  = HOS_HANDLE_INVALID;
+
+    POUND_CHECK_EQ_U64(
+        hos_process_create_thread(&g_process, &initial, HOS_THREAD_PRIORITY_DEFAULT, &thread),
+        POUND_SUCCESS);
+    POUND_CHECK(thread != HOS_HANDLE_INVALID);
+    POUND_CHECK_EQ_U64(hos_kernel_thread_count(&g_kernel), 1U);
+
+    hos_object_type_t type = HOS_OBJECT_EVENT;
+    POUND_CHECK_EQ_U64(hos_process_handle_type(&g_process, thread, &type), POUND_SUCCESS);
+    POUND_CHECK_EQ_U64(type, HOS_OBJECT_THREAD);
+
+    uint64_t id = 0U;
+    POUND_CHECK_EQ_U64(hos_process_thread_id(&g_process, thread, &id), POUND_SUCCESS);
+    POUND_CHECK(id != 0U);
+
+    hos_thread_status_t status = HOS_THREAD_STARTED;
+    POUND_CHECK_EQ_U64(hos_kernel_thread_status(&g_kernel, id, &status), POUND_SUCCESS);
+    POUND_CHECK_EQ_U64(status, HOS_THREAD_CREATED);
+
+    uint32_t priority = 0U;
+    POUND_CHECK_EQ_U64(hos_kernel_thread_priority(&g_kernel, id, &priority), POUND_SUCCESS);
+    POUND_CHECK_EQ_U64(priority, HOS_THREAD_PRIORITY_DEFAULT);
+
+    // The initial state was copied, not retained: the thread's register file is the one the
+    // caller built, and it says so.
+    guest_state_t loaded;
+    POUND_CHECK_EQ_U64(hos_kernel_thread_context(&g_kernel, id, &loaded), POUND_SUCCESS);
+    POUND_CHECK_EQ_U64(loaded.pc, 0x1000U);
+    POUND_CHECK_EQ_U64(loaded.x[0], 0x42U);
+    POUND_CHECK_EQ_U64(loaded.x[31], 0x8000U);
+
+    // And a thread identifier is not a handle: the kernel-wide lookups take the identifier,
+    // and one nothing has answers not-found rather than reaching the thread whose handle
+    // happens to share the number.
+    hos_thread_status_t other = HOS_THREAD_CREATED;
+    POUND_CHECK_EQ_U64(hos_kernel_thread_status(&g_kernel, id + 1000U, &other), POUND_ERROR_NOT_FOUND);
+
+    machine_teardown();
+}
+
+POUND_TEST(hos_kernel, thread_start_and_terminate)
+{
+    machine_reset();
+
+    const hos_handle_t thread = create_test_thread(0x2000U, HOS_THREAD_PRIORITY_DEFAULT);
+
+    uint64_t thread_id = 0U;
+    POUND_CHECK_EQ_U64(hos_process_thread_id(&g_process, thread, &thread_id), POUND_SUCCESS);
+
+    // Terminating a thread that was never started is refused rather than quietly allowed:
+    // a caller that means to finish something must not be told it did when it did not.
+    POUND_CHECK_EQ_U64(hos_kernel_thread_terminate(&g_kernel, thread_id), POUND_ERROR_INVALID_ARGUMENT);
+
+    POUND_CHECK_EQ_U64(hos_kernel_thread_start(&g_kernel, thread_id), POUND_SUCCESS);
+
+    hos_thread_status_t status = HOS_THREAD_CREATED;
+    POUND_CHECK_EQ_U64(hos_kernel_thread_status(&g_kernel, thread_id, &status), POUND_SUCCESS);
+    POUND_CHECK_EQ_U64(status, HOS_THREAD_STARTED);
+
+    // Starting twice is refused, which is the error the syscall layer turns into Horizon's
+    // invalid-state Result after checking the status itself.
+    POUND_CHECK_EQ_U64(hos_kernel_thread_start(&g_kernel, thread_id), POUND_ERROR_INVALID_ARGUMENT);
+
+    POUND_CHECK_EQ_U64(hos_kernel_thread_terminate(&g_kernel, thread_id), POUND_SUCCESS);
+
+    POUND_CHECK_EQ_U64(hos_kernel_thread_status(&g_kernel, thread_id, &status), POUND_SUCCESS);
+    POUND_CHECK_EQ_U64(status, HOS_THREAD_TERMINATED);
+
+    // The second terminate is a success: the thread exiting and its process closing both
+    // lead here, and the second of them must not be an error.
+    POUND_CHECK_EQ_U64(hos_kernel_thread_terminate(&g_kernel, thread_id), POUND_SUCCESS);
+
+    // A terminated thread that a handle still names can still be inspected, and starting it
+    // again is refused rather than resurrecting it.
+    POUND_CHECK_EQ_U64(hos_kernel_thread_start(&g_kernel, thread_id), POUND_ERROR_INVALID_ARGUMENT);
+    POUND_CHECK_EQ_U64(hos_kernel_thread_count(&g_kernel), 1U);
+
+    machine_teardown();
+}
+
+POUND_TEST(hos_kernel, thread_outlives_its_last_handle)
+{
+    machine_reset();
+
+    const hos_handle_t thread = create_test_thread(0x3000U, HOS_THREAD_PRIORITY_DEFAULT);
+
+    uint64_t thread_id = 0U;
+    POUND_CHECK_EQ_U64(hos_process_thread_id(&g_process, thread, &thread_id), POUND_SUCCESS);
+    POUND_CHECK_EQ_U64(hos_kernel_thread_start(&g_kernel, thread_id), POUND_SUCCESS);
+
+    // The title closes its handle while the thread is still running. Horizon allows it, and
+    // the thread keeps running: the kernel holds the object open on the thread's own behalf,
+    // so the register file cannot be freed under a thread that still has instructions to run.
+    POUND_CHECK_EQ_U64(hos_process_close_handle(&g_process, thread), POUND_SUCCESS);
+    POUND_CHECK_EQ_U64(hos_kernel_thread_count(&g_kernel), 1U);
+
+    hos_thread_status_t status = HOS_THREAD_CREATED;
+    POUND_CHECK_EQ_U64(hos_kernel_thread_status(&g_kernel, thread_id, &status), POUND_SUCCESS);
+    POUND_CHECK_EQ_U64(status, HOS_THREAD_STARTED);
+
+    guest_state_t loaded;
+    POUND_CHECK_EQ_U64(hos_kernel_thread_context(&g_kernel, thread_id, &loaded), POUND_SUCCESS);
+    POUND_CHECK_EQ_U64(loaded.pc, 0x3000U);
+
+    // Finishing it by identifier still works, and only then is the object gone: the last
+    // reference went with the thread rather than with the handle.
+    POUND_CHECK_EQ_U64(hos_kernel_thread_terminate(&g_kernel, thread_id), POUND_SUCCESS);
+    POUND_CHECK_EQ_U64(hos_kernel_thread_count(&g_kernel), 0U);
+    POUND_CHECK_EQ_U64(hos_kernel_thread_status(&g_kernel, thread_id, &status), POUND_ERROR_NOT_FOUND);
+
+    // Identifiers are never reused, so the one that has gone stays gone even as a later
+    // thread is created.
+    const hos_handle_t next      = create_test_thread(0x4000U, HOS_THREAD_PRIORITY_DEFAULT);
+    uint64_t           next_id   = 0U;
+    POUND_CHECK_EQ_U64(hos_process_thread_id(&g_process, next, &next_id), POUND_SUCCESS);
+    POUND_CHECK(next_id > thread_id);
+
+    machine_teardown();
+}
+
+POUND_TEST(hos_kernel, thread_arguments_are_validated)
+{
+    machine_reset();
+
+    const guest_state_t initial = thread_state(0x5000U, 0U, 0U);
+    hos_handle_t        thread  = HOS_HANDLE_INVALID;
+
+    POUND_CHECK_EQ_U64(hos_process_create_thread(NULL, &initial, HOS_THREAD_PRIORITY_DEFAULT, &thread),
+                       POUND_ERROR_INVALID_ARGUMENT);
+    POUND_CHECK_EQ_U64(hos_process_create_thread(&g_process, NULL, HOS_THREAD_PRIORITY_DEFAULT, &thread),
+                       POUND_ERROR_INVALID_ARGUMENT);
+    POUND_CHECK_EQ_U64(hos_process_create_thread(&g_process, &initial, HOS_THREAD_PRIORITY_DEFAULT, NULL),
+                       POUND_ERROR_INVALID_ARGUMENT);
+    POUND_CHECK_EQ_U64(hos_process_create_thread(&g_process,
+                                                 &initial,
+                                                 HOS_THREAD_PRIORITY_LOWEST + 1U,
+                                                 &thread),
+                       POUND_ERROR_INVALID_ARGUMENT);
+
+    // Both ends of the range are legal.
+    hos_handle_t highest = HOS_HANDLE_INVALID;
+    hos_handle_t lowest  = HOS_HANDLE_INVALID;
+
+    POUND_CHECK_EQ_U64(
+        hos_process_create_thread(&g_process, &initial, HOS_THREAD_PRIORITY_HIGHEST, &highest),
+        POUND_SUCCESS);
+    POUND_CHECK_EQ_U64(
+        hos_process_create_thread(&g_process, &initial, HOS_THREAD_PRIORITY_LOWEST, &lowest),
+        POUND_SUCCESS);
+
+    // An event is not a thread, so resolving one refuses rather than answering with a
+    // garbage identifier.
+    hos_handle_t event = HOS_HANDLE_INVALID;
+    POUND_CHECK_EQ_U64(hos_process_create_event(&g_process, HOS_EVENT_AUTO, false, &event), POUND_SUCCESS);
+
+    uint64_t id = 0U;
+    POUND_CHECK_EQ_U64(hos_process_thread_id(&g_process, event, &id), POUND_ERROR_INVALID_ARGUMENT);
+
+    POUND_CHECK_EQ_U64(hos_process_thread_id(NULL, event, &id), POUND_ERROR_INVALID_ARGUMENT);
+
+    // A kernel-level lookup for an identifier nothing has answers not-found, and does not log
+    // it: that is the answer the scheduler asks for constantly.
+    hos_thread_status_t status = HOS_THREAD_CREATED;
+
+    pound_test_log_reset();
+    POUND_CHECK_EQ_U64(hos_kernel_thread_status(&g_kernel, 0xDEADU, &status), POUND_ERROR_NOT_FOUND);
+    POUND_CHECK_EQ_U64(pound_test_log_count(), 0U);
+
+    POUND_CHECK_EQ_U64(hos_kernel_thread_context(&g_kernel, 0xDEADU, NULL), POUND_ERROR_INVALID_ARGUMENT);
+
+    machine_teardown();
+}
+
+POUND_TEST(hos_kernel, thread_priorities_are_settable_while_terminated)
+{
+    machine_reset();
+
+    const hos_handle_t thread = create_test_thread(0x6000U, HOS_THREAD_PRIORITY_DEFAULT);
+
+    uint64_t thread_id = 0U;
+    POUND_CHECK_EQ_U64(hos_process_thread_id(&g_process, thread, &thread_id), POUND_SUCCESS);
+    POUND_CHECK_EQ_U64(hos_kernel_thread_start(&g_kernel, thread_id), POUND_SUCCESS);
+    POUND_CHECK_EQ_U64(hos_kernel_thread_terminate(&g_kernel, thread_id), POUND_SUCCESS);
+
+    // Horizon keeps the priority a finished thread held, and a title that adjusts a thread
+    // it has already joined is not doing anything wrong.
+    POUND_CHECK_EQ_U64(hos_kernel_thread_set_priority(&g_kernel, thread_id, HOS_THREAD_PRIORITY_HIGHEST),
+                       POUND_SUCCESS);
+
+    uint32_t priority = 0U;
+    POUND_CHECK_EQ_U64(hos_kernel_thread_priority(&g_kernel, thread_id, &priority), POUND_SUCCESS);
+    POUND_CHECK_EQ_U64(priority, HOS_THREAD_PRIORITY_HIGHEST);
+
+    POUND_CHECK_EQ_U64(
+        hos_kernel_thread_set_priority(&g_kernel, thread_id, HOS_THREAD_PRIORITY_LOWEST + 1U),
+        POUND_ERROR_INVALID_ARGUMENT);
+    POUND_CHECK_EQ_U64(hos_kernel_thread_set_priority(&g_kernel, 0xDEADU, HOS_THREAD_PRIORITY_DEFAULT),
+                       POUND_ERROR_NOT_FOUND);
+    POUND_CHECK_EQ_U64(hos_kernel_thread_priority(&g_kernel, thread_id, NULL), POUND_ERROR_INVALID_ARGUMENT);
+
+    machine_teardown();
+}
+
+POUND_TEST(hos_kernel, wait_any_reports_the_first_ready_handle)
+{
+    machine_reset();
+
+    hos_handle_t automatic = HOS_HANDLE_INVALID;
+    hos_handle_t manual    = HOS_HANDLE_INVALID;
+
+    POUND_CHECK_EQ_U64(hos_process_create_event(&g_process, HOS_EVENT_AUTO, false, &automatic),
+                       POUND_SUCCESS);
+    POUND_CHECK_EQ_U64(hos_process_create_event(&g_process, HOS_EVENT_MANUAL, true, &manual),
+                       POUND_SUCCESS);
+
+    const hos_handle_t handles[2] = {automatic, manual};
+
+    uint32_t index = 0xFFFFU;
+    bool     ready = false;
+
+    // The manual event is the second handle and the only one set, so the second is the one
+    // reported. It stays set, so a second wait says the same thing.
+    POUND_CHECK_EQ_U64(hos_process_wait_any(&g_process, handles, 2U, &index, &ready), POUND_SUCCESS);
+    POUND_CHECK(ready);
+    POUND_CHECK_EQ_U64(index, 1U);
+
+    POUND_CHECK_EQ_U64(hos_process_wait_any(&g_process, handles, 2U, &index, &ready), POUND_SUCCESS);
+    POUND_CHECK(ready);
+    POUND_CHECK_EQ_U64(index, 1U);
+
+    // Now the auto-reset event is signalled too, and it wins by being first -- and the wait
+    // consumes it, so the next wait falls back to the manual event.
+    POUND_CHECK_EQ_U64(hos_process_event_signal(&g_process, automatic), POUND_SUCCESS);
+
+    POUND_CHECK_EQ_U64(hos_process_wait_any(&g_process, handles, 2U, &index, &ready), POUND_SUCCESS);
+    POUND_CHECK(ready);
+    POUND_CHECK_EQ_U64(index, 0U);
+
+    POUND_CHECK_EQ_U64(hos_process_wait_any(&g_process, handles, 2U, &index, &ready), POUND_SUCCESS);
+    POUND_CHECK(ready);
+    POUND_CHECK_EQ_U64(index, 1U);
+
+    machine_teardown();
+}
+
+POUND_TEST(hos_kernel, wait_any_never_reports_a_running_thread)
+{
+    machine_reset();
+
+    const hos_handle_t thread = create_test_thread(0x7000U, HOS_THREAD_PRIORITY_DEFAULT);
+
+    uint64_t thread_id = 0U;
+    POUND_CHECK_EQ_U64(hos_process_thread_id(&g_process, thread, &thread_id), POUND_SUCCESS);
+    POUND_CHECK_EQ_U64(hos_kernel_thread_start(&g_kernel, thread_id), POUND_SUCCESS);
+
+    // A join is a level: waiting on a running thread is simply not ready yet.
+    uint32_t index = 0xFFFFU;
+    bool     ready = true;
+
+    POUND_CHECK_EQ_U64(hos_process_wait_any(&g_process, &thread, 1U, &index, &ready), POUND_SUCCESS);
+    POUND_CHECK(!ready);
+
+    POUND_CHECK_EQ_U64(hos_kernel_thread_terminate(&g_kernel, thread_id), POUND_SUCCESS);
+
+    // Once it has finished, the same wait is ready -- without anything having signalled
+    // anything, which is the whole reason nothing here needs a wakeup path.
+    POUND_CHECK_EQ_U64(hos_process_wait_any(&g_process, &thread, 1U, &index, &ready), POUND_SUCCESS);
+    POUND_CHECK(ready);
+    POUND_CHECK_EQ_U64(index, 0U);
+
+    machine_teardown();
+}
+
+POUND_TEST(hos_kernel, wait_any_rejects_bad_arguments)
+{
+    machine_reset();
+
+    hos_handle_t automatic = HOS_HANDLE_INVALID;
+    POUND_CHECK_EQ_U64(hos_process_create_event(&g_process, HOS_EVENT_AUTO, false, &automatic),
+                       POUND_SUCCESS);
+
+    uint32_t index = 0U;
+    bool     ready = false;
+
+    POUND_CHECK_EQ_U64(hos_process_wait_any(&g_process, &automatic, 0U, &index, &ready),
+                       POUND_ERROR_INVALID_ARGUMENT);
+    POUND_CHECK_EQ_U64(hos_process_wait_any(&g_process,
+                                            &automatic,
+                                            HOS_MAX_WAIT_HANDLES + 1U,
+                                            &index,
+                                            &ready),
+                       POUND_ERROR_INVALID_ARGUMENT);
+    POUND_CHECK_EQ_U64(hos_process_wait_any(NULL, &automatic, 1U, &index, &ready),
+                       POUND_ERROR_INVALID_ARGUMENT);
+    POUND_CHECK_EQ_U64(hos_process_wait_any(&g_process, NULL, 1U, &index, &ready),
+                       POUND_ERROR_INVALID_ARGUMENT);
+    POUND_CHECK_EQ_U64(hos_process_wait_any(&g_process, &automatic, 1U, NULL, &ready),
+                       POUND_ERROR_INVALID_ARGUMENT);
+    POUND_CHECK_EQ_U64(hos_process_wait_any(&g_process, &automatic, 1U, &index, NULL),
+                       POUND_ERROR_INVALID_ARGUMENT);
+
+    // A handle that names nothing makes the whole wait unsatisfiable, which is a failure of
+    // the call rather than a handle to skip past: a title waiting on a set is waiting on all
+    // of it, and answering "not ready" would park it forever on a handle it cannot use.
+    const hos_handle_t dead = 0x00100001U;
+    POUND_CHECK_EQ_U64(hos_process_wait_any(&g_process, &dead, 1U, &index, &ready),
+                       POUND_ERROR_INVALID_HANDLE);
+
+    machine_teardown();
+}
+
+POUND_TEST(hos_kernel, process_close_terminates_its_threads)
+{
+    machine_reset();
+
+    const hos_handle_t thread = create_test_thread(0x8000U, HOS_THREAD_PRIORITY_DEFAULT);
+
+    uint64_t thread_id = 0U;
+    POUND_CHECK_EQ_U64(hos_process_thread_id(&g_process, thread, &thread_id), POUND_SUCCESS);
+    POUND_CHECK_EQ_U64(hos_kernel_thread_start(&g_kernel, thread_id), POUND_SUCCESS);
+
+    // Closing the process takes the thread's own reference with it, so the object does not
+    // survive as a thread nothing can run or finish -- which is what a scheduler holding it
+    // by identifier would otherwise be left watching.
+    hos_process_close(&g_process);
+    POUND_CHECK_EQ_U64(hos_kernel_thread_count(&g_kernel), 0U);
+
+    hos_thread_status_t status = HOS_THREAD_STARTED;
+    POUND_CHECK_EQ_U64(hos_kernel_thread_status(&g_kernel, thread_id, &status), POUND_ERROR_NOT_FOUND);
+
+    // And the kernel can be torn down: nothing is left holding it open.
+    POUND_CHECK_EQ_U64(hos_kernel_destroy(&g_kernel), POUND_SUCCESS);
+}
+
+// -----------------------------------------------------------------------------
 
 POUND_TEST_SUITE(hos_kernel,
                  POUND_TEST_CASE(hos_kernel, kernel_lifecycle),
@@ -1144,6 +1517,15 @@ POUND_TEST_SUITE(hos_kernel,
                  POUND_TEST_CASE(hos_kernel, session_request_refuses_a_reply_that_does_not_fit),
                  POUND_TEST_CASE(hos_kernel, session_operations_require_a_session_handle),
                  POUND_TEST_CASE(hos_kernel, session_request_rejects_bad_arguments),
-                 POUND_TEST_CASE(hos_kernel, handler_may_re_enter_the_kernel))
+                 POUND_TEST_CASE(hos_kernel, handler_may_re_enter_the_kernel),
+                 POUND_TEST_CASE(hos_kernel, thread_creation_and_identity),
+                 POUND_TEST_CASE(hos_kernel, thread_start_and_terminate),
+                 POUND_TEST_CASE(hos_kernel, thread_outlives_its_last_handle),
+                 POUND_TEST_CASE(hos_kernel, thread_arguments_are_validated),
+                 POUND_TEST_CASE(hos_kernel, thread_priorities_are_settable_while_terminated),
+                 POUND_TEST_CASE(hos_kernel, wait_any_reports_the_first_ready_handle),
+                 POUND_TEST_CASE(hos_kernel, wait_any_never_reports_a_running_thread),
+                 POUND_TEST_CASE(hos_kernel, wait_any_rejects_bad_arguments),
+                 POUND_TEST_CASE(hos_kernel, process_close_terminates_its_threads))
 
 /*** end of file ***/

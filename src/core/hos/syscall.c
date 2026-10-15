@@ -30,7 +30,12 @@ typedef struct
 // -----------------------------------------------------------------------------
 
 static error_t svc_exit_process(hos_syscall_context_t *context, guest_state_t *state);
+static error_t svc_create_thread(hos_syscall_context_t *context, guest_state_t *state);
+static error_t svc_start_thread(hos_syscall_context_t *context, guest_state_t *state);
+static error_t svc_exit_thread(hos_syscall_context_t *context, guest_state_t *state);
 static error_t svc_sleep_thread(hos_syscall_context_t *context, guest_state_t *state);
+static error_t svc_get_thread_priority(hos_syscall_context_t *context, guest_state_t *state);
+static error_t svc_set_thread_priority(hos_syscall_context_t *context, guest_state_t *state);
 static error_t svc_get_current_processor_number(hos_syscall_context_t *context, guest_state_t *state);
 static error_t svc_signal_event(hos_syscall_context_t *context, guest_state_t *state);
 static error_t svc_clear_event(hos_syscall_context_t *context, guest_state_t *state);
@@ -39,6 +44,7 @@ static error_t svc_reset_signal(hos_syscall_context_t *context, guest_state_t *s
 static error_t svc_wait_synchronization(hos_syscall_context_t *context, guest_state_t *state);
 static error_t svc_get_system_tick(hos_syscall_context_t *context, guest_state_t *state);
 static error_t svc_connect_to_named_port(hos_syscall_context_t *context, guest_state_t *state);
+static error_t svc_get_thread_id(hos_syscall_context_t *context, guest_state_t *state);
 static error_t svc_break(hos_syscall_context_t *context, guest_state_t *state);
 static error_t svc_output_debug_string(hos_syscall_context_t *context, guest_state_t *state);
 static error_t svc_flush_entire_data_cache(hos_syscall_context_t *context, guest_state_t *state);
@@ -52,7 +58,12 @@ static error_t svc_sleep_system(hos_syscall_context_t *context, guest_state_t *s
 static const hos_syscall_entry_t HOS_SYSCALLS[] = {
     // Implemented.
     { HOS_SVC_EXIT_PROCESS, "svcExitProcess", svc_exit_process },
+    { HOS_SVC_CREATE_THREAD, "svcCreateThread", svc_create_thread },
+    { HOS_SVC_START_THREAD, "svcStartThread", svc_start_thread },
+    { HOS_SVC_EXIT_THREAD, "svcExitThread", svc_exit_thread },
     { HOS_SVC_SLEEP_THREAD, "svcSleepThread", svc_sleep_thread },
+    { HOS_SVC_GET_THREAD_PRIORITY, "svcGetThreadPriority", svc_get_thread_priority },
+    { HOS_SVC_SET_THREAD_PRIORITY, "svcSetThreadPriority", svc_set_thread_priority },
     { HOS_SVC_GET_CURRENT_PROCESSOR_NUMBER, "svcGetCurrentProcessorNumber", svc_get_current_processor_number },
     { HOS_SVC_SIGNAL_EVENT, "svcSignalEvent", svc_signal_event },
     { HOS_SVC_CLEAR_EVENT, "svcClearEvent", svc_clear_event },
@@ -61,6 +72,7 @@ static const hos_syscall_entry_t HOS_SYSCALLS[] = {
     { HOS_SVC_WAIT_SYNCHRONIZATION, "svcWaitSynchronization", svc_wait_synchronization },
     { HOS_SVC_GET_SYSTEM_TICK, "svcGetSystemTick", svc_get_system_tick },
     { HOS_SVC_CONNECT_TO_NAMED_PORT, "svcConnectToNamedPort", svc_connect_to_named_port },
+    { HOS_SVC_GET_THREAD_ID, "svcGetThreadId", svc_get_thread_id },
     { HOS_SVC_BREAK, "svcBreak", svc_break },
     { HOS_SVC_OUTPUT_DEBUG_STRING, "svcOutputDebugString", svc_output_debug_string },
     { HOS_SVC_FLUSH_ENTIRE_DATA_CACHE, "svcFlushEntireDataCache", svc_flush_entire_data_cache },
@@ -74,11 +86,6 @@ static const hos_syscall_entry_t HOS_SYSCALLS[] = {
     { 0x04U, "svcMapMemory", NULL },
     { 0x05U, "svcUnmapMemory", NULL },
     { 0x06U, "svcQueryMemory", NULL },
-    { 0x08U, "svcCreateThread", NULL },
-    { 0x09U, "svcStartThread", NULL },
-    { 0x0AU, "svcExitThread", NULL },
-    { 0x0CU, "svcGetThreadPriority", NULL },
-    { 0x0DU, "svcSetThreadPriority", NULL },
     { 0x13U, "svcMapSharedMemory", NULL },
     { 0x14U, "svcUnmapSharedMemory", NULL },
     { 0x15U, "svcCreateTransferMemory", NULL },
@@ -87,7 +94,6 @@ static const hos_syscall_entry_t HOS_SYSCALLS[] = {
     { 0x21U, "svcSendSyncRequest", NULL },
     { 0x22U, "svcSendSyncRequestWithUserBuffer", NULL },
     { 0x24U, "svcGetProcessId", NULL },
-    { 0x25U, "svcGetThreadId", NULL },
     { 0x29U, "svcGetInfo", NULL },
     { 0x41U, "svcAcceptSession", NULL },
     { 0x42U, "svcReplyAndReceiveLight", NULL },
@@ -180,6 +186,56 @@ static hos_handle_t
 handle_argument(uint64_t value)
 {
     return (hos_handle_t)(uint32_t)value;
+}
+
+/// Writes a little-endian 32-bit word to guest memory at `address`.
+///
+/// The counterpart to `read_guest`, and the reason the out-parameter calls write through
+/// the pointer in `X0` before they replace `X0` with their `Result`: once the `Result` is
+/// in the register, the address is gone. Returns false when the four bytes are not
+/// writable, which every caller turns into `HOS_RESULT_INVALID_ADDRESS`.
+static bool
+write_guest_u32(const hos_syscall_context_t *POUND_RESTRICT context, uint64_t address, uint32_t value)
+{
+    size_t available = 0U;
+
+    uint8_t *pointer = guest_memory_translate_write(context->memory, address, &available);
+
+    if ((pointer == NULL) || (available < sizeof(uint32_t)))
+    {
+        return false;
+    }
+
+    pointer[0] = (uint8_t)value;
+    pointer[1] = (uint8_t)(value >> 8);
+    pointer[2] = (uint8_t)(value >> 16);
+    pointer[3] = (uint8_t)(value >> 24);
+    return true;
+}
+
+/// Writes a little-endian 64-bit word to guest memory at `address`.
+///
+/// A separate function rather than a call to `write_guest_u32` twice, because a guest
+/// address is not guaranteed to have eight contiguous writable bytes just because it has
+/// four: the span is checked for the width actually being written.
+static bool
+write_guest_u64(const hos_syscall_context_t *POUND_RESTRICT context, uint64_t address, uint64_t value)
+{
+    size_t available = 0U;
+
+    uint8_t *pointer = guest_memory_translate_write(context->memory, address, &available);
+
+    if ((pointer == NULL) || (available < sizeof(uint64_t)))
+    {
+        return false;
+    }
+
+    for (size_t index = 0U; index < sizeof(uint64_t); index++)
+    {
+        pointer[index] = (uint8_t)(value >> (8U * index));
+    }
+
+    return true;
 }
 
 // -----------------------------------------------------------------------------
@@ -319,18 +375,22 @@ svc_reset_signal(hos_syscall_context_t *POUND_RESTRICT context, guest_state_t *P
 static error_t
 svc_wait_synchronization(hos_syscall_context_t *POUND_RESTRICT context, guest_state_t *POUND_RESTRICT state)
 {
-    const uint64_t handles_address = state->x[1];
-    const int32_t  count           = (int32_t)(uint32_t)state->x[2];
-    const int64_t  timeout         = (int64_t)state->x[3];
+    // Horizon's signature: X0 is a pointer to the ready index, X1 the handle array, W2 the
+    // count and X3 the timeout. X0 is a pointer on entry and the `Result` on return, which
+    // is why the index is written *through* it before it is replaced.
+    const uint64_t out_index_address = state->x[0];
+    const uint64_t handles_address   = state->x[1];
+    const int32_t  count             = (int32_t)(uint32_t)state->x[2];
+    const int64_t  timeout           = (int64_t)state->x[3];
 
     if (count == 0)
     {
-        // Zero handles is the "wait forever" form, which is the one behaviour a poll
-        // cannot imitate: returning a timeout would tell the guest something that has
-        // not happened.
+        // Zero handles is Horizon's "wait forever", and this is a gap rather than a poll:
+        // a wait on nothing can only be ended by the clock, and there is no honest way to
+        // shorten it into a timeout the guest never asked for.
         POUND_LOG_ERROR(&thread_logger,
-                        "Refusing svcWaitSynchronization with no handles: waiting forever needs a "
-                        "scheduler to wake the caller.");
+                        "Refusing svcWaitSynchronization with no handles: a wait on nothing can only be "
+                        "ended by a deadline, and Horizon documents this form as waiting forever.");
         return POUND_ERROR_UNSUPPORTED_SYSCALL;
     }
 
@@ -338,16 +398,6 @@ svc_wait_synchronization(hos_syscall_context_t *POUND_RESTRICT context, guest_st
     {
         state->x[0] = HOS_RESULT_TOO_MANY_HANDLES;
         return POUND_SUCCESS;
-    }
-
-    if (timeout != 0)
-    {
-        POUND_LOG_ERROR(&thread_logger,
-                        "Refusing svcWaitSynchronization for %lld ns: only the zero-timeout poll is "
-                        "implemented, and reporting a timeout before it expires would be a lie the "
-                        "guest cannot detect.",
-                        (long long)timeout);
-        return POUND_ERROR_UNSUPPORTED_SYSCALL;
     }
 
     const uint8_t *bytes = NULL;
@@ -358,54 +408,82 @@ svc_wait_synchronization(hos_syscall_context_t *POUND_RESTRICT context, guest_st
         return POUND_SUCCESS;
     }
 
+    hos_handle_t handles[HOS_SYSCALL_MAX_WAIT_HANDLES];
+
     for (uint32_t index = 0U; index < (uint32_t)count; index++)
     {
-        const hos_handle_t handle = (hos_handle_t)read_u32(bytes + ((size_t)index * sizeof(uint32_t)));
-
-        hos_object_type_t type  = HOS_OBJECT_EVENT;
-        error_t           error = hos_process_handle_type(context->process, handle, &type);
-
-        if (error == POUND_ERROR_INVALID_HANDLE)
-        {
-            // Horizon reports an invalid handle in the array as the call's failure,
-            // rather than skipping it: a wait over a bad handle can never be satisfied.
-            state->x[0] = HOS_RESULT_INVALID_HANDLE;
-            return POUND_SUCCESS;
-        }
-
-        if (error != POUND_SUCCESS)
-        {
-            return error;
-        }
-
-        if (type != HOS_OBJECT_EVENT)
-        {
-            // A session is a legitimate thing to wait on -- it becomes ready when a
-            // message is waiting -- so this is not an error and not a refusal. Nothing
-            // queues a message in this slice, so a session is simply never the ready
-            // one, and the call goes on to the next handle. That is the right answer for
-            // a guest waiting on a session and an event at once, which is a normal shape
-            // for a title's main loop.
-            continue;
-        }
-
-        bool signaled = false;
-        error         = hos_process_event_wait(context->process, handle, &signaled);
-
-        if (error != POUND_SUCCESS)
-        {
-            return error;
-        }
-
-        if (signaled)
-        {
-            state->x[1] = index;
-            state->x[0] = HOS_RESULT_SUCCESS;
-            return POUND_SUCCESS;
-        }
+        handles[index] = (hos_handle_t)read_u32(bytes + ((size_t)index * sizeof(uint32_t)));
     }
 
-    state->x[0] = HOS_RESULT_TIMEOUT;
+    // The whole set is polled at once, in the kernel, because the answer is more than "is
+    // anything ready": an auto-reset signal is consumed by the wait that wins it, and the
+    // order that decides which one wins lives there. Polling one handle at a time, as an
+    // earlier version did, could express neither.
+    uint32_t ready_index = 0U;
+    bool     ready       = false;
+
+    error_t error = hos_process_wait_any(context->process, handles, (uint32_t)count, &ready_index, &ready);
+
+    if (error == POUND_ERROR_INVALID_HANDLE)
+    {
+        // Horizon reports an invalid handle in the array as the call's failure rather than
+        // skipping it: a wait over a handle that names nothing can never be satisfied, so
+        // it is not something to look past.
+        state->x[0] = HOS_RESULT_INVALID_HANDLE;
+        return POUND_SUCCESS;
+    }
+
+    if (error != POUND_SUCCESS)
+    {
+        return error;
+    }
+
+    if (ready)
+    {
+        // The common case, and the one that must never park a thread: a wait that can be
+        // satisfied now is answered now, which is what a poll is.
+        state->x[0] =
+            write_guest_u32(context, out_index_address, ready_index) ? HOS_RESULT_SUCCESS : HOS_RESULT_INVALID_ADDRESS;
+        return POUND_SUCCESS;
+    }
+
+    if (timeout == 0)
+    {
+        state->x[0] = HOS_RESULT_TIMEOUT;
+        return POUND_SUCCESS;
+    }
+
+    if (context->scheduler == NULL)
+    {
+        POUND_LOG_ERROR(&thread_logger,
+                        "Refusing svcWaitSynchronization for %lld ns: nothing in the set is ready, and "
+                        "parking the caller until something is needs a scheduler. Answering a timeout "
+                        "before it expires would be a lie the guest cannot detect.",
+                        (long long)timeout);
+        return POUND_ERROR_UNSUPPORTED_SYSCALL;
+    }
+
+    // A negative timeout is Horizon's "wait forever": parked with no deadline, so only one
+    // of the handles becoming ready can wake it. A positive one becomes a deadline on the
+    // scheduler's clock. The deadline is taken now, not when the thread is parked, so the
+    // wait is measured from the call rather than from whenever the scheduler next looked.
+    const bool     has_deadline = timeout > 0;
+    const uint64_t deadline =
+        has_deadline
+            ? hos_scheduler_tick(context->scheduler) + hos_scheduler_ticks_from_nanoseconds((uint64_t)timeout)
+            : 0U;
+
+    error = hos_scheduler_block_current(context->scheduler, handles, (uint32_t)count, has_deadline, deadline);
+
+    if (error != POUND_SUCCESS)
+    {
+        return error;
+    }
+
+    // The call is suspended, not finished: `pc` stays on the `SVC` and the pointer is
+    // still in `X0`, because `hos_syscall_complete_block` needs it when the scheduler
+    // wakes the thread.
+    context->outcome = HOS_SYSCALL_BLOCKED;
     return POUND_SUCCESS;
 }
 
@@ -452,8 +530,20 @@ svc_connect_to_named_port(hos_syscall_context_t *POUND_RESTRICT context, guest_s
 
     if (error == POUND_SUCCESS)
     {
+        // The handle goes through the pointer Horizon leaves in X0; writing it into X1
+        // instead would put it where the guest is not looking and leave the `Result` in
+        // X0 to be read as the handle.
+        if (!write_guest_u32(context, state->x[0], handle))
+        {
+            // The session was opened, but the guest cannot be told its handle. The handle
+            // is taken straight back so the process does not keep a session it can never
+            // name, and the bad pointer is reported exactly as Horizon would.
+            hos_process_close_handle(context->process, handle);
+            state->x[0] = HOS_RESULT_INVALID_ADDRESS;
+            return POUND_SUCCESS;
+        }
+
         state->x[0] = HOS_RESULT_SUCCESS;
-        state->x[1] = handle;
         return POUND_SUCCESS;
     }
 
@@ -564,6 +654,331 @@ svc_output_debug_string(hos_syscall_context_t *POUND_RESTRICT context, guest_sta
 }
 
 // -----------------------------------------------------------------------------
+// Thread calls
+// -----------------------------------------------------------------------------
+//
+// A thread has two names and these calls use both. The guest only ever holds a *handle*,
+// which is the per-process authority that says it may touch this thread at all, so every
+// call here starts from a handle and resolves it to the kernel-wide *identifier* the
+// kernel and scheduler work in. Nothing here trusts a handle without resolving it: a
+// thread another process owns has a different handle there and none here.
+//
+// A context with no scheduler has no run queue, so creating or starting a thread through
+// it would make a thread that can never run. That is a gap rather than a shorter answer,
+// and it is refused as one.
+
+/// Reports whether a thread call must be refused because the context has no scheduler.
+///
+/// True means the caller should return `POUND_ERROR_UNSUPPORTED_SYSCALL`, and the log line
+/// naming the call has already been written.
+static bool
+thread_call_needs_scheduler(const hos_syscall_context_t *POUND_RESTRICT context, const char *POUND_RESTRICT call)
+{
+    if (context->scheduler != NULL)
+    {
+        return false;
+    }
+
+    POUND_LOG_ERROR(&thread_logger,
+                    "Refusing %s: the context has no scheduler, so there is no run queue for a thread to "
+                    "be created in or started from.",
+                    call);
+    return true;
+}
+
+static error_t
+svc_create_thread(hos_syscall_context_t *POUND_RESTRICT context, guest_state_t *POUND_RESTRICT state)
+{
+    if (thread_call_needs_scheduler(context, "svcCreateThread"))
+    {
+        return POUND_ERROR_UNSUPPORTED_SYSCALL;
+    }
+
+    // Horizon's signature: X0 is a pointer to the new handle, X1 the entry point, X2 the
+    // argument, X3 the stack bottom, W4 the priority and W5 the core. The core is ignored
+    // rather than checked: one scheduler is one core, and a title naming a second is asking
+    // for a second of something Pound has one of.
+    const uint64_t out_handle_address = state->x[0];
+    const uint64_t entry              = state->x[1];
+    const uint64_t argument           = state->x[2];
+    const uint64_t stack_bottom       = state->x[3];
+    const uint32_t priority           = (uint32_t)state->x[4];
+
+    if (priority > HOS_THREAD_PRIORITY_LOWEST)
+    {
+        // A gap rather than a `Result`: Horizon refuses an out-of-range priority, but Pound
+        // has not established which `Result` word it uses, and inventing one would be an
+        // answer the guest could branch on that nobody verified.
+        POUND_LOG_ERROR(&thread_logger,
+                        "Refusing svcCreateThread with priority %u: Horizon's own Result for a priority "
+                        "outside %u..%u has not been established, and inventing one would look like an "
+                        "answer.",
+                        (unsigned int)priority,
+                        (unsigned int)HOS_THREAD_PRIORITY_HIGHEST,
+                        (unsigned int)HOS_THREAD_PRIORITY_LOWEST);
+        return POUND_ERROR_UNSUPPORTED_SYSCALL;
+    }
+
+    // The register file the thread starts with: entry in `pc`, the argument in `x[0]` and
+    // the stack pointer in `x[31]`, with everything else zero. Built here because this is
+    // the layer that knows Horizon's calling convention; the kernel only copies it.
+    guest_state_t initial;
+    const error_t initialized = guest_state_init(&initial);
+
+    if (initialized != POUND_SUCCESS)
+    {
+        return initialized;
+    }
+
+    initial.pc    = entry;
+    initial.x[0]  = argument;
+    initial.x[31] = stack_bottom;
+
+    hos_handle_t  handle = HOS_HANDLE_INVALID;
+    const error_t error  = hos_process_create_thread(context->process, &initial, priority, &handle);
+
+    if (error != POUND_SUCCESS)
+    {
+        return error;
+    }
+
+    if (!write_guest_u32(context, out_handle_address, handle))
+    {
+        // Created but undeliverable: give the handle straight back so the process does not
+        // hold a thread it can never name.
+        hos_process_close_handle(context->process, handle);
+        state->x[0] = HOS_RESULT_INVALID_ADDRESS;
+        return POUND_SUCCESS;
+    }
+
+    state->x[0] = HOS_RESULT_SUCCESS;
+    return POUND_SUCCESS;
+}
+
+static error_t
+svc_start_thread(hos_syscall_context_t *POUND_RESTRICT context, guest_state_t *POUND_RESTRICT state)
+{
+    if (thread_call_needs_scheduler(context, "svcStartThread"))
+    {
+        return POUND_ERROR_UNSUPPORTED_SYSCALL;
+    }
+
+    const hos_handle_t handle = handle_argument(state->x[0]);
+    uint64_t           id     = 0U;
+
+    uint32_t      result = HOS_RESULT_SUCCESS;
+    error_t       error  = hos_process_thread_id(context->process, handle, &id);
+
+    if (handle_failure_result(error, &result))
+    {
+        state->x[0] = result;
+        return POUND_SUCCESS;
+    }
+
+    if (error != POUND_SUCCESS)
+    {
+        return error;
+    }
+
+    // The status is read here rather than left to the kernel, because the kernel answers a
+    // second start with an error code and this layer is the only place that can turn it
+    // into the `Result` a guest compares against. Starting a thread that is already started
+    // or has already finished is `0xFA01`, invalid state.
+    hos_thread_status_t status = HOS_THREAD_CREATED;
+    error                      = hos_kernel_thread_status(context->kernel, id, &status);
+
+    if (error != POUND_SUCCESS)
+    {
+        return error;
+    }
+
+    if (status != HOS_THREAD_CREATED)
+    {
+        state->x[0] = HOS_RESULT_INVALID_STATE;
+        return POUND_SUCCESS;
+    }
+
+    error = hos_kernel_thread_start(context->kernel, id);
+
+    if (error != POUND_SUCCESS)
+    {
+        return error;
+    }
+
+    error = hos_scheduler_admit(context->scheduler, context->process, id);
+
+    if (error != POUND_SUCCESS)
+    {
+        // Started but unschedulable, so it could never run: finish it rather than leave a
+        // thread the guest believes is running and the scheduler has never heard of.
+        hos_kernel_thread_terminate(context->kernel, id);
+        return error;
+    }
+
+    state->x[0] = HOS_RESULT_SUCCESS;
+    return POUND_SUCCESS;
+}
+
+static error_t
+svc_exit_thread(hos_syscall_context_t *POUND_RESTRICT context, guest_state_t *POUND_RESTRICT state)
+{
+    POUND_UNUSED(state);
+
+    if (thread_call_needs_scheduler(context, "svcExitThread"))
+    {
+        return POUND_ERROR_UNSUPPORTED_SYSCALL;
+    }
+
+    // The calling thread is the one the scheduler most recently ran. There is no handle in
+    // the arguments to name it with, so the identifier is the only name available.
+    const uint64_t id = hos_scheduler_current_thread_id(context->scheduler);
+
+    if (id == 0U)
+    {
+        POUND_LOG_ERROR(&thread_logger, "Aborting svcExitThread: no thread is currently running.");
+        return POUND_ERROR_INVALID_ARGUMENT;
+    }
+
+    const error_t error = hos_kernel_thread_terminate(context->kernel, id);
+
+    if (error != POUND_SUCCESS)
+    {
+        return error;
+    }
+
+    // Returns nothing, and leaves `pc` on the `SVC`: the thread is over, and the last thing
+    // it did is still where a debugger looks. The scheduler reaps the terminated thread on
+    // its next decision.
+    POUND_LOG_INFO(&thread_logger, "A guest thread called svcExitThread; it is finished.");
+    return POUND_SUCCESS;
+}
+
+static error_t
+svc_get_thread_priority(hos_syscall_context_t *POUND_RESTRICT context, guest_state_t *POUND_RESTRICT state)
+{
+    if (thread_call_needs_scheduler(context, "svcGetThreadPriority"))
+    {
+        return POUND_ERROR_UNSUPPORTED_SYSCALL;
+    }
+
+    // Horizon's signature: X0 is a pointer to the priority, X1 the handle.
+    const uint64_t     out_priority_address = state->x[0];
+    const hos_handle_t handle               = handle_argument(state->x[1]);
+    uint64_t           id                   = 0U;
+
+    uint32_t      result = HOS_RESULT_SUCCESS;
+    error_t       error  = hos_process_thread_id(context->process, handle, &id);
+
+    if (handle_failure_result(error, &result))
+    {
+        state->x[0] = result;
+        return POUND_SUCCESS;
+    }
+
+    if (error != POUND_SUCCESS)
+    {
+        return error;
+    }
+
+    uint32_t priority = 0U;
+    error             = hos_kernel_thread_priority(context->kernel, id, &priority);
+
+    if (error != POUND_SUCCESS)
+    {
+        return error;
+    }
+
+    state->x[0] = write_guest_u32(context, out_priority_address, priority) ? HOS_RESULT_SUCCESS
+                                                                         : HOS_RESULT_INVALID_ADDRESS;
+    return POUND_SUCCESS;
+}
+
+static error_t
+svc_set_thread_priority(hos_syscall_context_t *POUND_RESTRICT context, guest_state_t *POUND_RESTRICT state)
+{
+    if (thread_call_needs_scheduler(context, "svcSetThreadPriority"))
+    {
+        return POUND_ERROR_UNSUPPORTED_SYSCALL;
+    }
+
+    // Horizon's signature: X0 is the handle, W1 the new priority. The order is the other
+    // way round from `svcGetThreadPriority`, which is a real asymmetry and not a typo.
+    const hos_handle_t handle   = handle_argument(state->x[0]);
+    const uint32_t     priority = (uint32_t)state->x[1];
+
+    if (priority > HOS_THREAD_PRIORITY_LOWEST)
+    {
+        POUND_LOG_ERROR(&thread_logger,
+                        "Refusing svcSetThreadPriority with priority %u: Horizon's own Result for a "
+                        "priority outside %u..%u has not been established, and inventing one would look "
+                        "like an answer.",
+                        (unsigned int)priority,
+                        (unsigned int)HOS_THREAD_PRIORITY_HIGHEST,
+                        (unsigned int)HOS_THREAD_PRIORITY_LOWEST);
+        return POUND_ERROR_UNSUPPORTED_SYSCALL;
+    }
+
+    uint64_t id = 0U;
+
+    uint32_t      result = HOS_RESULT_SUCCESS;
+    error_t       error  = hos_process_thread_id(context->process, handle, &id);
+
+    if (handle_failure_result(error, &result))
+    {
+        state->x[0] = result;
+        return POUND_SUCCESS;
+    }
+
+    if (error != POUND_SUCCESS)
+    {
+        return error;
+    }
+
+    error = hos_kernel_thread_set_priority(context->kernel, id, priority);
+
+    if (error != POUND_SUCCESS)
+    {
+        return error;
+    }
+
+    state->x[0] = HOS_RESULT_SUCCESS;
+    return POUND_SUCCESS;
+}
+
+static error_t
+svc_get_thread_id(hos_syscall_context_t *POUND_RESTRICT context, guest_state_t *POUND_RESTRICT state)
+{
+    if (thread_call_needs_scheduler(context, "svcGetThreadId"))
+    {
+        return POUND_ERROR_UNSUPPORTED_SYSCALL;
+    }
+
+    // Horizon's signature: X0 is a pointer to the identifier, X1 the handle. The answer is
+    // 64 bits, so it goes through a 64-bit write even though the identifier is small.
+    const uint64_t     out_thread_id_address = state->x[0];
+    const hos_handle_t handle                = handle_argument(state->x[1]);
+    uint64_t           id                    = 0U;
+
+    uint32_t      result = HOS_RESULT_SUCCESS;
+    error_t       error  = hos_process_thread_id(context->process, handle, &id);
+
+    if (handle_failure_result(error, &result))
+    {
+        state->x[0] = result;
+        return POUND_SUCCESS;
+    }
+
+    if (error != POUND_SUCCESS)
+    {
+        return error;
+    }
+
+    state->x[0] =
+        write_guest_u64(context, out_thread_id_address, id) ? HOS_RESULT_SUCCESS : HOS_RESULT_INVALID_ADDRESS;
+    return POUND_SUCCESS;
+}
+
+// -----------------------------------------------------------------------------
 // Calls that stop the guest
 // -----------------------------------------------------------------------------
 
@@ -599,26 +1014,50 @@ svc_break(hos_syscall_context_t *POUND_RESTRICT context, guest_state_t *POUND_RE
 static error_t
 svc_sleep_thread(hos_syscall_context_t *POUND_RESTRICT context, guest_state_t *POUND_RESTRICT state)
 {
-    POUND_UNUSED(context);
-
     const int64_t nanoseconds = (int64_t)state->x[0];
 
-    if ((nanoseconds == 0) || (nanoseconds == -1) || (nanoseconds == -2))
+    if (nanoseconds <= 0)
     {
-        // The three specified yields, all of which return without sleeping: zero gives
-        // the rest of the slice to threads of the same priority, -1 and -2 give it to any
-        // thread at all. With no scheduler there is nothing to hand anything to, which
-        // makes a yield exactly the no-op it looks like -- and unlike a sleep, that is
-        // the correct behaviour rather than an approximation of it.
+        // A yield: zero gives the rest of the slice to threads of the same priority, and a
+        // negative duration gives it to every thread. Both are the same request to hand the
+        // core over early, which is what a round-robin priority queue does with a move to
+        // the back. Returns without sleeping, and returns nothing: `X0` keeps the duration
+        // the guest passed, because `svcSleepThread` is a `void` call.
+        if (context->scheduler != NULL)
+        {
+            hos_scheduler_yield(context->scheduler);
+        }
+
         return POUND_SUCCESS;
     }
 
-    POUND_LOG_ERROR(&thread_logger,
-                    "Refusing svcSleepThread(%lld): only the yields are implemented, because a sleep "
-                    "needs a scheduler to wake the caller and returning early would run the guest "
-                    "against a clock that did not advance.",
-                    (long long)nanoseconds);
-    return POUND_ERROR_UNSUPPORTED_SYSCALL;
+    if (context->scheduler == NULL)
+    {
+        POUND_LOG_ERROR(&thread_logger,
+                        "Refusing svcSleepThread(%lld): a sleep needs a scheduler to wake the caller, and "
+                        "returning early would run the guest against a clock that did not advance.",
+                        (long long)nanoseconds);
+        return POUND_ERROR_UNSUPPORTED_SYSCALL;
+    }
+
+    // The deadline is on the scheduler's clock, not the wall: a sleep of half a second is
+    // a number of ticks added to whatever the clock reads now, so it cannot outlive the
+    // guest's own sense of time or drift against the instructions it retires.
+    const uint64_t deadline =
+        hos_scheduler_tick(context->scheduler) + hos_scheduler_ticks_from_nanoseconds((uint64_t)nanoseconds);
+
+    const error_t error = hos_scheduler_sleep_current(context->scheduler, deadline);
+
+    if (error != POUND_SUCCESS)
+    {
+        return error;
+    }
+
+    // Suspended, not finished: the run loop finishes it with `hos_syscall_complete_block`
+    // when the clock reaches the deadline. `X0` is left holding the duration, untouched,
+    // since a sleep reports nothing.
+    context->outcome = HOS_SYSCALL_BLOCKED;
+    return POUND_SUCCESS;
 }
 
 static error_t
@@ -655,6 +1094,66 @@ hos_syscall_context_init(hos_syscall_context_t *POUND_RESTRICT context,
     // that has not said what the clock reads gets tick zero, which is at least a value
     // somebody can look at and ask about.
     context->outcome = HOS_SYSCALL_COMPLETED;
+}
+
+void
+hos_syscall_context_set_scheduler(hos_syscall_context_t *POUND_RESTRICT context, hos_scheduler_t *POUND_RESTRICT scheduler)
+{
+    if (context == NULL)
+    {
+        return;
+    }
+
+    context->scheduler = scheduler;
+}
+
+error_t
+hos_syscall_complete_block(hos_syscall_context_t *POUND_RESTRICT context,
+                           guest_state_t *POUND_RESTRICT        state,
+                           const hos_wake_t *POUND_RESTRICT     wake)
+{
+    if ((context == NULL) || (state == NULL) || (wake == NULL))
+    {
+        POUND_LOG_ERROR(&thread_logger, "Aborting hos_syscall_complete_block: context, state or wake is NULL.");
+        return POUND_ERROR_INVALID_ARGUMENT;
+    }
+
+    switch (wake->reason)
+    {
+        case HOS_WAKE_SIGNALED:
+            // A handle the thread was waiting on became ready. The index goes through the
+            // pointer the blocking call left in X0, and only then is X0 replaced by the
+            // `Result`: afterwards the address is gone.
+            state->x[0] = write_guest_u32(context, state->x[0], wake->ready_index) ? HOS_RESULT_SUCCESS
+                                                                                  : HOS_RESULT_INVALID_ADDRESS;
+            break;
+
+        case HOS_WAKE_TIMED_OUT:
+            // Nothing became ready before the deadline. A timeout carries no index, so the
+            // pointer is not written at all -- which is also what keeps a stale index from
+            // pointing the guest at a handle it never asked about.
+            state->x[0] = HOS_RESULT_TIMEOUT;
+            break;
+
+        case HOS_WAKE_SLEPT:
+            // A plain sleep ended. `svcSleepThread` returns nothing, so X0 keeps the
+            // duration the guest passed. Writing a `Result` here would be the one thing a
+            // void call must not do.
+            break;
+
+        default:
+            POUND_LOG_ERROR(&thread_logger,
+                            "Aborting hos_syscall_complete_block: unknown wake reason %d.",
+                            (int)wake->reason);
+            return POUND_ERROR_INVALID_ARGUMENT;
+    }
+
+    context->outcome = HOS_SYSCALL_COMPLETED;
+
+    // The suspension is over, so the trap is: the call finishes and `pc` steps past the
+    // `SVC` it was left on when the thread parked.
+    state->pc += 4U;
+    return POUND_SUCCESS;
 }
 
 error_t
