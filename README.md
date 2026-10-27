@@ -320,7 +320,7 @@ under the terms of the GPL v3.
 
 - 🧱 **Foundation strengthening**: Memory systems and runtime validation
 - ⚡ **JIT experimentation**: Ballistic ARM64 integration progress
-- 🖥️ **Guest CPU and OS**: A64 interpreter subset, a Horizon OS handle/service kernel with one-sided readable and writable event handles, SVC dispatch including `svcCreateEvent`, a thread scheduler with blocking waits, synchronization cancellation with `svcCancelSynchronization`, and a memory-layout slice that partitions the guest address space, answers `svcSetHeapSize`/`svcQueryMemory`, and reprotects regions with `svcSetMemoryPermission`/`svcSetMemoryAttribute`
+- 🖥️ **Guest CPU and OS**: A64 interpreter subset, a Horizon OS handle/service kernel with one-sided readable and writable event handles, SVC dispatch including `svcCreateEvent`, a thread scheduler with blocking waits, synchronization cancellation with `svcCancelSynchronization`, and a memory-layout slice that partitions the guest address space, answers `svcSetHeapSize`/`svcQueryMemory` and the heap and ASLR region types of `svcGetInfo`, and reprotects regions with `svcSetMemoryPermission`/`svcSetMemoryAttribute`
 - 📁 **Filesystem work**: HFS0 parser development (experimental branches)
 - 🔐 **Crypto primitives**: SHA256 and verification systems (experimental)
 - 🐛 **Testing**: Expanded unit test coverage and CI reliability
