@@ -264,6 +264,11 @@ typedef enum
 
     /// Enters the system sleep state. Returns nothing; there is nothing to sleep.
     HOS_SVC_SLEEP_SYSTEM = 0x4D,
+
+    /// Maps memory from one address to another (aliasing).
+    HOS_SVC_MAP_MEMORY = 0x04,
+    /// Unmaps previously mapped memory.
+    HOS_SVC_UNMAP_MEMORY = 0x05,
 } hos_svc_t;
 
 // -----------------------------------------------------------------------------

@@ -357,6 +357,8 @@ add_library(PoundCore OBJECT
         src/core/gpu/sm86/ir.c
         src/core/gpu/sm86/spirv.c
         src/core/gpu/sm86/translate.c
+        src/core/gpu/vulkan/vulkan_backend.c
+        src/core/loader/title_loader.c
         src/core/log.c
         src/core/safe_math.c
 )

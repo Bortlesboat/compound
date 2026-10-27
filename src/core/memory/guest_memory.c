@@ -188,6 +188,25 @@ translate(const guest_memory_t *guest_memory,
         {
             available = region_remaining;
         }
+
+        // If this is an aliased region, translate through the alias base
+        if (region->alias_base != 0U)
+        {
+            // Calculate offset within the alias target region
+            const uint64_t alias_offset = (guest_address - region->base) + (region->alias_base - guest_memory->guest_base);
+            if (alias_offset >= guest_memory->host_size)
+            {
+                POUND_LOG_ERROR(&thread_logger,
+                                "Guest %s fault: aliased address 0x%llx maps outside host memory.",
+                                what,
+                                (unsigned long long)guest_address);
+                return NULL;
+            }
+            *max_bytes                       = (size_t)(region_remaining < (guest_memory->host_size - alias_offset) ? region_remaining : (guest_memory->host_size - alias_offset));
+            const uint8_t *POUND_RESTRICT host_base   = guest_memory->host_base;
+            const uint8_t *POUND_RESTRICT host_offset = host_base + alias_offset;
+            return host_offset;
+        }
     }
 
     *max_bytes                       = (size_t)available;

@@ -328,6 +328,20 @@ error_t hos_memory_layout_set_attribute(hos_memory_layout_t *POUND_RESTRICT layo
 const guest_memory_region_t *hos_memory_layout_find(const hos_memory_layout_t *POUND_RESTRICT layout,
                                                     uint64_t                               address);
 
+/// Maps memory from src_addr to dst_addr with the given permissions (aliasing).
+error_t hos_memory_layout_map_alias(hos_memory_layout_t *POUND_RESTRICT layout,
+                                    uint64_t src_addr,
+                                    uint64_t dst_addr,
+                                    uint64_t size,
+                                    uint32_t state,
+                                    uint32_t permission,
+                                    uint32_t attribute);
+
+/// Unmaps a region starting at base of size bytes, returning it to Free.
+error_t hos_memory_layout_unmap(hos_memory_layout_t *POUND_RESTRICT layout,
+                                uint64_t base,
+                                uint64_t size);
+
 #endif // POUND_HOS_MEMORY_LAYOUT_H
 
 /*** end of file ***/

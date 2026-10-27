@@ -56,6 +56,8 @@ static error_t svc_output_debug_string(hos_syscall_context_t *context, guest_sta
 static error_t svc_flush_entire_data_cache(hos_syscall_context_t *context, guest_state_t *state);
 static error_t svc_flush_data_cache(hos_syscall_context_t *context, guest_state_t *state);
 static error_t svc_sleep_system(hos_syscall_context_t *context, guest_state_t *state);
+static error_t svc_map_memory(hos_syscall_context_t *context, guest_state_t *state);
+static error_t svc_unmap_memory(hos_syscall_context_t *context, guest_state_t *state);
 
 // -----------------------------------------------------------------------------
 // The table
@@ -90,11 +92,13 @@ static const hos_syscall_entry_t HOS_SYSCALLS[] = {
     { HOS_SVC_FLUSH_DATA_CACHE, "svcFlushDataCache", svc_flush_data_cache },
     { HOS_SVC_CREATE_EVENT, "svcCreateEvent", svc_create_event },
     { HOS_SVC_SLEEP_SYSTEM, "svcSleepSystem", svc_sleep_system },
+    { HOS_SVC_MAP_MEMORY, "svcMapMemory", svc_map_memory },
+    { HOS_SVC_UNMAP_MEMORY, "svcUnmapMemory", svc_unmap_memory },
 
     // Known, named, and deliberately not implemented. Each of these is waiting on a
     // slice that does not exist yet, and each says which one in the header.
-    { 0x04U, "svcMapMemory", NULL },
-    { 0x05U, "svcUnmapMemory", NULL },
+    { 0x13U, "svcMapSharedMemory", NULL },
+    { 0x14U, "svcUnmapSharedMemory", NULL },
     { 0x13U, "svcMapSharedMemory", NULL },
     { 0x14U, "svcUnmapSharedMemory", NULL },
     { 0x15U, "svcCreateTransferMemory", NULL },
@@ -1776,3 +1780,40 @@ hos_syscall_dispatch(hos_syscall_context_t *POUND_RESTRICT context,
 }
 
 /*** end of file ***/
+
+
+static error_t svc_map_memory(hos_syscall_context_t *context, guest_state_t *state)
+{
+    if(memory_call_needs_layout(context, "svcMapMemory")) return POUND_ERROR_UNSUPPORTED_SYSCALL;
+    const uint64_t dst_addr = state->x[0];
+    const uint64_t src_addr = state->x[1];
+    const uint64_t size = state->x[2];
+    const uint32_t perm = (uint32_t)state->x[3];
+    if((dst_addr % HOS_MEMORY_PAGE_SIZE)!=0U||(src_addr % HOS_MEMORY_PAGE_SIZE)!=0U||(size==0U)||(size % HOS_MEMORY_PAGE_SIZE)!=0U){state->x[0]=HOS_RESULT_INVALID_SIZE;return POUND_SUCCESS;}
+    uint32_t res = HOS_RESULT_SUCCESS;
+    error_t err = hos_memory_layout_map_alias(context->layout, src_addr, dst_addr, size, HOS_MEMORY_STATE_ALIAS, perm, 0U);
+    if(!memory_layout_error_to_result(err, &res)){
+        if(err==POUND_ERROR_INVALID_ARGUMENT) res = HOS_RESULT_INVALID_CURRENT_MEMORY;
+        else if(err==POUND_ERROR_ALLOCATION_FAILED) res = HOS_RESULT_SLAB_EXHAUSTED;
+        else if(err==POUND_ERROR_GUEST_ADDRESS_OUT_OF_BOUNDS||err==POUND_ERROR_GUEST_ADDRESS_OVERFLOW) res = HOS_RESULT_INVALID_ADDRESS;
+        else return err;
+    }
+    state->x[0]=res; return POUND_SUCCESS;
+}
+
+static error_t svc_unmap_memory(hos_syscall_context_t *context, guest_state_t *state)
+{
+    if(memory_call_needs_layout(context, "svcUnmapMemory")) return POUND_ERROR_UNSUPPORTED_SYSCALL;
+    const uint64_t addr = state->x[0];
+    const uint64_t size = state->x[1];
+    if((addr % HOS_MEMORY_PAGE_SIZE)!=0U||(size==0U)||(size % HOS_MEMORY_PAGE_SIZE)!=0U){state->x[0]=HOS_RESULT_INVALID_SIZE;return POUND_SUCCESS;}
+    uint32_t res = HOS_RESULT_SUCCESS;
+    error_t err = hos_memory_layout_unmap(context->layout, addr, size);
+    if(!memory_layout_error_to_result(err, &res)){
+        if(err==POUND_ERROR_INVALID_ARGUMENT) res = HOS_RESULT_INVALID_CURRENT_MEMORY;
+        else if(err==POUND_ERROR_ALLOCATION_FAILED) res = HOS_RESULT_SLAB_EXHAUSTED;
+        else if(err==POUND_ERROR_GUEST_ADDRESS_OUT_OF_BOUNDS||err==POUND_ERROR_GUEST_ADDRESS_OVERFLOW) res = HOS_RESULT_INVALID_ADDRESS;
+        else return err;
+    }
+    state->x[0]=res; return POUND_SUCCESS;
+}
