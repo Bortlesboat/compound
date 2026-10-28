@@ -1,7 +1,7 @@
 #ifndef POUND_CORE_CONFIG_H
 #define POUND_CORE_CONFIG_H
 
-/// Pound's user settings, and the file they live in.
+/// Compound's user settings, and the file they live in.
 ///
 /// A single struct, a single set of defaults, and one parser and one serialiser
 /// for the on-disk form. The point of collecting them here rather than scattering
@@ -20,7 +20,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/// Longest path Pound stores in the config.
+/// Longest path Compound stores in the config.
 ///
 /// A separate constant from `POUND_PATH_MAX` in the GUI header because that one
 /// belongs to the window layer and this one has to be visible to core, which does

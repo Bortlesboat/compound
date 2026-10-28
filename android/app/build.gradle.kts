@@ -1,4 +1,4 @@
-// Pound — Android application module.
+// Compound — Android application module.
 
 plugins {
     id("com.android.application")
@@ -22,7 +22,7 @@ val poundSdlJavaDir: Directory =
 val poundKeyStorePath: String? = providers.environmentVariable("POUND_KEYSTORE_PATH").orNull
     ?.takeIf { it.isNotBlank() && file(it).exists() }
 
-// The single ABI Pound builds for. Named once because the ABI list, the JNI
+// The single ABI Compound builds for. Named once because the ABI list, the JNI
 // staging hook and cmake/toolchains/android-arm64.cmake all have to agree, and a
 // disagreement shows up as an APK with no native image rather than as an error.
 val poundAbis = listOf("arm64-v8a")
@@ -115,7 +115,7 @@ android {
         getByName("main") {
             // SDL's Java runtime lives in package org.libsdl.app and is compiled
             // from the vendored SDL tree. Nothing in it references the
-            // generated R or BuildConfig classes, so Pound's own namespace can
+            // generated R or BuildConfig classes, so Compound's own namespace can
             // stay independent.
             java.srcDir(poundSdlJavaDir)
         }

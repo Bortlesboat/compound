@@ -11,7 +11,7 @@
 static const pound_page_descriptor_t POUND_PAGE_REGISTRY[POUND_PAGE_COUNT] = {
     [POUND_PAGE_LIBRARY]  = { "Library", "Your installed titles", pound_page_render_library },
     [POUND_PAGE_MEMORY]   = { "Memory", "The guest address space", pound_page_render_memory },
-    [POUND_PAGE_LOGS]     = { "Logs", "Everything Pound has reported", pound_page_render_logs },
+    [POUND_PAGE_LOGS]     = { "Logs", "Everything Compound has reported", pound_page_render_logs },
     [POUND_PAGE_SETTINGS] = { "Settings", "Where things live and how loud to be",
                               pound_page_render_settings },
     [POUND_PAGE_ABOUT]    = { "About", "What this build can do", pound_page_render_about },

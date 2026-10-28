@@ -1,6 +1,6 @@
-# Building Pound
+# Building Compound
 
-Everything below assumes Clang, CMake ≥ 3.25 and Ninja. Pound is a Clang-only
+Everything below assumes Clang, CMake ≥ 3.25 and Ninja. Compound is a Clang-only
 project; GCC and MSVC are not supported, and compiler-specific flags in
 `CMakePresets.json` (`-ftrivial-auto-var-init`, `-flto`, `/LTCG`) assume it.
 
@@ -100,19 +100,19 @@ cmake --build --preset debug-windows --parallel
 ctest  --preset debug-windows
 ```
 
-Artefacts land in `build/debug/bin/windows/`: `Pound.exe`, `libPoundGui.dll`,
-`PoundTests.exe`, `libimgui.dll` (or `imgui.dll`, see below), `SDL3.dll`,
+Artefacts land in `build/debug/bin/windows/`: `Compound.exe`, `libCompoundGui.dll`,
+`CompoundTests.exe`, `libimgui.dll` (or `imgui.dll`, see below), `SDL3.dll`,
 `mimalloc-secure-debug.dll` and `mimalloc-redirect.dll`.
 
-`libPoundGui.dll` must sit next to `Pound.exe`: the GUI plugin is loaded by
+`libCompoundGui.dll` must sit next to `Compound.exe`: the GUI plugin is loaded by
 absolute path next to the executable, not through the import table.
 
 ### Shared library prefixes on Windows
 
-`PoundGui` sets `PREFIX "lib"` explicitly, because under clang-cl — the
+`CompoundGui` sets `PREFIX "lib"` explicitly, because under clang-cl — the
 toolchain the Windows presets use — CMake's
 `CMAKE_SHARED_LIBRARY_PREFIX` is empty and every shared library would otherwise
-land as `PoundGui.dll`.
+land as `CompoundGui.dll`.
 
 No *global* override is applied, deliberately. `CMAKE_SHARED_LIBRARY_PREFIX` is
 left alone so that SDL3's own `PREFIX ""` and mimalloc's `PREFIX ""` keep
@@ -122,14 +122,14 @@ runtime loader SDL uses to find its own dynapi.
 That means the unprefixed names of the third-party libraries are whatever the
 toolchain's default is:
 
-| Toolchain | `PoundGui` | `imgui` | SDL | mimalloc |
+| Toolchain | `CompoundGui` | `imgui` | SDL | mimalloc |
 | --- | --- | --- | --- | --- |
-| clang-cl (presets, CI) | `libPoundGui.dll` | `imgui.dll` | `SDL3.dll` | `mimalloc-secure-debug.dll` |
-| clang + MinGW headers | `libPoundGui.dll` | `libimgui.dll` | `SDL3.dll` | `mimalloc-secure-debug.dll` |
+| clang-cl (presets, CI) | `libCompoundGui.dll` | `imgui.dll` | `SDL3.dll` | `mimalloc-secure-debug.dll` |
+| clang + MinGW headers | `libCompoundGui.dll` | `libimgui.dll` | `SDL3.dll` | `mimalloc-secure-debug.dll` |
 
 The MinGW row is why `libimgui.dll` appears in local builds: clang's MinGW
 platform module defaults `CMAKE_SHARED_LIBRARY_PREFIX` to `lib`, and nothing in
-Pound clears it for `imgui`. Both spellings work — the import entry is written
+Compound clears it for `imgui`. Both spellings work — the import entry is written
 at link time — but the names differ, so stage the tree rather than picking
 files by hand.
 
@@ -166,7 +166,7 @@ cmake --preset linux-aarch64-debug
 cmake --build --preset linux-aarch64-debug --parallel
 
 # Sanity check that this really produced an ARM binary.
-file build/linux-aarch64-debug/bin/linux/Pound
+file build/linux-aarch64-debug/bin/linux/Compound
 
 ctest --preset linux-aarch64-debug
 ```
@@ -188,7 +188,7 @@ cmake --preset linux-aarch64-debug \
 
 ### What gets built
 
-On Android Pound is **not** an executable. SDL's Android entry point is invoked
+On Android Compound is **not** an executable. SDL's Android entry point is invoked
 from Java: `SDLActivity` `dlopen()`s `libmain.so` and calls the exported
 `SDL_main`, which `src/main.c` produces by including `<SDL3/SDL_main.h>`.
 
@@ -198,7 +198,7 @@ Everything is therefore linked statically into a single `libmain.so`:
 | --- | --- | --- |
 | SDL3 | `SDL3-static` | Two copies of SDL state crash `ImGui_ImplSDL3_Init` |
 | `imgui` | `STATIC` | Keeps `libmain.so` self-contained |
-| `PoundGui` | `STATIC` | `SDL_GetBasePath()` resolves inside the read-only APK, so there is nowhere writable to copy a reloaded image to |
+| `CompoundGui` | `STATIC` | `SDL_GetBasePath()` resolves inside the read-only APK, so there is nowhere writable to copy a reloaded image to |
 | mimalloc | `mimalloc-static` | A shared mimalloc could not be guaranteed to load before its own `malloc` override takes effect |
 | libc++ | `c++_static` | Avoids shipping a second `.so` |
 
@@ -319,7 +319,7 @@ reproducible without every contributor installing an additional toolchain.
 | `POUND_BUILD_TESTS` | `ON` | Build the unit test suite and register it with CTest |
 | `POUND_ENABLE_BALLISTIC` | `ON` | Link the JIT when artefacts exist; auto-disabled otherwise |
 | `POUND_ENABLE_INSTALL_RULES` | `ON` | Emit `install()` rules |
-| `POUND_LINK_GUI_STATICALLY` | Android: `ON` | Link `PoundGui` in rather than `dlopen`ing it |
+| `POUND_LINK_GUI_STATICALLY` | Android: `ON` | Link `CompoundGui` in rather than `dlopen`ing it |
 | `POUND_ENABLE_LINK_TIME_OPTIMIZATION` | `ON` | LTO / `-flto=full`, downgraded with a warning if unsupported |
 | `POUND_SANITIZERS` | preset | Sanitizer flags; silently dropped when cross-compiling or on Android |
 | `POUND_COMPILER_FLAGS` | preset | Extra flags applied by `add_compiler_flags` |
@@ -348,7 +348,7 @@ On Android the layout is flat because that is what an APK packages.
 
 ### Runtime dependencies of a staged build
 
-`cmake --install` stages `Pound`, `libPoundGui`, `imgui`, `mimalloc`,
+`cmake --install` stages `Compound`, `libCompoundGui`, `imgui`, `mimalloc`,
 `mimalloc-redirect`, `lua51` and the SDL runtime. Two things are deliberately
 *not* staged and have to come from the environment:
 
@@ -360,7 +360,7 @@ On Android the layout is flat because that is what an APK packages.
   `ucrtbase.dll`, so a statically linked CRT would leave it nothing to hook and
   the override would silently never engage (requirement 1 in
   `extern/mimalloc/mimalloc/bin/readme.md`). Install the redistributable, or
-  drop the two DLLs next to `Pound.exe`, or configure with
+  drop the two DLLs next to `Compound.exe`, or configure with
   `-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded` if you accept losing the
   redirect.
 
@@ -369,7 +369,7 @@ On Android the layout is flat because that is what an APK packages.
 
 ### mimalloc's Windows redirect currently does not engage
 
-Pound links `mimalloc.dll`, and `/INCLUDE:mi_version` in `src/main.c`'s target
+Compound links `mimalloc.dll`, and `/INCLUDE:mi_version` in `src/main.c`'s target
 keeps that DLL mapped, but `mimalloc-redirect.dll` has to be initialised
 *before* `ucrtbase.dll` in order to win. The Windows loader walks the import
 graph depth-first, and `SDL3.dll` reaches `ucrtbase` transitively through
@@ -380,10 +380,10 @@ first. At startup you will see:
 mimalloc-redirect: warning: standard malloc is _not_ redirected! -- using regular malloc/free.
 ```
 
-That is upstream's own diagnostic, not a Pound code path failing. It is not
+That is upstream's own diagnostic, not a Compound code path failing. It is not
 silently ignored: allocations made through `memory_subsystem_allocate` still go
 to mimalloc explicitly and are still counted per bucket, so the memory tracker
-reports Pound's own heap accurately. What is *not* intercepted is plain
+reports Compound's own heap accurately. What is *not* intercepted is plain
 `malloc`/`free` issued from inside third-party DLLs such as SDL3 and cimgui.
 
 mimalloc's own documentation is candid that this cannot always be fixed from the
@@ -400,11 +400,11 @@ decision that has not been made here.
 ```sh
 ctest --preset debug                     # everything
 ctest --preset debug -R guest_memory     # one suite
-ctest --preset debug -R PoundTests.      # all suites
+ctest --preset debug -R CompoundTests.      # all suites
 ```
 
-Five CTest entries are registered: `PoundTests` runs the whole binary, and
-`PoundTests.<suite>` re-runs it with a filter per suite
+Five CTest entries are registered: `CompoundTests` runs the whole binary, and
+`CompoundTests.<suite>` re-runs it with a filter per suite
 (`safe_math`, `guest_memory`, `guest_state`, `memory`). Failures therefore name
 the area they came from.
 
@@ -413,8 +413,8 @@ vendored, and a cross-compiled ASan or a framework dependency would itself have
 to be cross-compiled.
 
 ```sh
-./build/debug/bin/linux/PoundTests            # run directly
-./build/debug/bin/linux/PoundTests memory     # filter
+./build/debug/bin/linux/CompoundTests            # run directly
+./build/debug/bin/linux/CompoundTests memory     # filter
 ```
 
 The harness also installs a capturing logger, so tests can assert that a failed
@@ -441,8 +441,8 @@ Intentional. `pound_resolve_sanitizers()` drops them because a cross-compiled or
 Android ASan runtime cannot be loaded, and a link failure at configure time
 would be more confusing than the downgrade.
 
-**`libPoundGui.dll` is not found at runtime (Windows)**
-It must sit next to `Pound.exe`. The loader resolves it by absolute path next to
+**`libCompoundGui.dll` is not found at runtime (Windows)**
+It must sit next to `Compound.exe`. The loader resolves it by absolute path next to
 the executable, not through the import table.
 
 **Gradle: "No libmain.so was produced"**

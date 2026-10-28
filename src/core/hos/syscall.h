@@ -4,7 +4,7 @@
 //! the number, `X0..X7` carry the arguments, and `X0` (or a pointer it holds, or
 //! `X0`/`X1`) carries the answer back. `interpreter_run` stops on one and reports
 //! `INTERPRETER_TRAP_SVC` with the immediate; this module is what turns that
-//! number into work, and it is the only thing in Pound that does.
+//! number into work, and it is the only thing in Compound that does.
 //!
 //! # The rule that decides what a failure looks like
 //!
@@ -17,7 +17,7 @@
 //!   not exist, or is not a WritableEvent"). The call *completes*, `X0` gets that
 //!   value, and the guest handles it exactly as it would on hardware. That is the
 //!   emulation working.
-//! - **Pound has not implemented it.** `svcSendSyncRequest` needs the CMIF wire
+//! - **Compound has not implemented it.** `svcSendSyncRequest` needs the CMIF wire
 //!   format in the thread-local IPC buffer; `svcSetHeapSize` needs the memory
 //!   layout. Neither exists yet. These do not complete: the call returns
 //!   `POUND_ERROR_UNSUPPORTED_SYSCALL`, logs the number and its name, and leaves
@@ -25,8 +25,8 @@
 //!
 //! Collapsing the second into the first would be the one thing this module must
 //! not do. Handing back a plausible `Result` for a call nobody wrote would make a
-//! title take a branch on an answer Pound invented, and the emulator would look
-//! like firmware that replied. A refusal is a fact about Pound; a `Result` is a
+//! title take a branch on an answer Compound invented, and the emulator would look
+//! like firmware that replied. A refusal is a fact about Compound; a `Result` is a
 //! fact about the guest, and only the guest's own failures produce one.
 //!
 //! # Where an answer goes
@@ -53,11 +53,11 @@
 //! The register-out and pointer-out forms are both present on some calls
 //! (`svcQueryMemory` writes `MemoryInfo` through `X0` *and* answers `W1`), and a
 //! call may have both without either being redundant: the kernel's write and the
-//! stub's store target different places for different callers. Pound also writes
+//! stub's store target different places for different callers. Compound also writes
 //! the register-out answers through `X0` where hardware leaves that to the stub, so
 //! a guest that reads an out-parameter either way sees the same value twice; that
 //! is a deliberate belt-and-braces on top of the register, not a claim about what
-//! the kernel itself does. Where Pound cannot know what hardware leaves in a
+//! the kernel itself does. Where Compound cannot know what hardware leaves in a
 //! register on a *failure* path -- nothing documents it -- it leaves that register
 //! untouched rather than inventing a value, and the stub's store is the guest's
 //! problem, exactly as on hardware.
@@ -72,7 +72,7 @@
 //! event. Horizon's event handles are one-directional -- `svcSignalEvent` needs the
 //! writable side, a wait and `svcResetSignal` need the readable one, and
 //! `svcClearEvent` accepts either -- and the wrong side is `0xE401`, the same
-//! `Result` as a handle that names nothing. Pound models that as a right on the
+//! `Result` as a handle that names nothing. Compound models that as a right on the
 //! handle rather than on the object, so `svcDuplicateHandle` cannot promote a
 //! readable handle into a writable one. The event itself is manual-reset and not
 //! auto-reset: libnx implements its autoclear mode by calling `svcResetSignal`
@@ -109,7 +109,7 @@
 //! `POUND_ERROR_UNSUPPORTED_SYSCALL` and a log line: the same shape as any other
 //! unimplemented feature, and for the same reason. `svcCancelSynchronization` is
 //! refused without one too, even though setting the flag needs no clock: without a
-//! run queue Pound cannot name the calling thread, so the flag it would set could
+//! run queue Compound cannot name the calling thread, so the flag it would set could
 //! never be consumed, and success would be a promise the emulator cannot keep.
 //!
 //! # What is not here, and why
@@ -118,7 +118,7 @@
 //! ASLR regions, which the layout already holds) need a process model beyond the
 //! handle table. The two memory-layout calls that alias a range
 //! (`svcMapMemory`, `svcUnmapMemory`) need an unmap path the region table does not
-//! have yet: Pound's guest memory is one flat buffer, so mapping a range at a
+//! have yet: Compound's guest memory is one flat buffer, so mapping a range at a
 //! second address would need a real alias rather than a second region. IPC
 //! (`svcSendSyncRequest`, `svcReplyAndReceive`) needs the CMIF wire format and
 //! the thread-local command buffer at `TPIDR_EL0 + 0x80`. Each returns
@@ -165,7 +165,7 @@
 ///
 /// Only the numbers that are implemented are named. A number outside this list is
 /// refused by name (`"svc 0x2D"`), so the list doubles as the documentation of
-/// what Pound answers.
+/// what Compound answers.
 typedef enum
 {
     /// Grows or shrinks the calling process's heap, answering its base address in
@@ -269,6 +269,11 @@ typedef enum
 
     /// Enters the system sleep state. Returns nothing; there is nothing to sleep.
     HOS_SVC_SLEEP_SYSTEM = 0x4D,
+
+    /// Maps memory from one address to another (aliasing).
+    HOS_SVC_MAP_MEMORY = 0x04,
+    /// Unmaps previously mapped memory.
+    HOS_SVC_UNMAP_MEMORY = 0x05,
 } hos_svc_t;
 
 // -----------------------------------------------------------------------------
@@ -310,7 +315,7 @@ typedef enum
 #define HOS_RESULT_OUT_OF_MEMORY 0x0000D001U
 
 /// The kernel's fixed pool of memory-block descriptors is exhausted. Horizon
-/// reports this for `svcSetHeapSize`; Pound's region table is its memory-block
+/// reports this for `svcSetHeapSize`; Compound's region table is its memory-block
 /// pool, so it answers the same word when the table has no room for the split.
 #define HOS_RESULT_SLAB_EXHAUSTED 0x0000CE01U
 
@@ -332,7 +337,7 @@ typedef enum
 
 /// `svcSetMemoryAttribute` was given a mask and value it does not accept. The
 /// value must be a subset of the mask, and both must stay inside the one
-/// attribute Pound can change, the uncached bit. Horizon's own name for this is
+/// attribute Compound can change, the uncached bit. Horizon's own name for this is
 /// `ResultInvalidCombination`.
 #define HOS_RESULT_INVALID_COMBINATION 0x0000E801U
 

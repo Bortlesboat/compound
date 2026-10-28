@@ -35,12 +35,12 @@ endif ()
 
 if (NOT ANDROID_NDK)
     message(FATAL_ERROR
-            "[Pound] ANDROID_NDK is not set. Install the NDK and either export ANDROID_NDK or "
+            "[Compound] ANDROID_NDK is not set. Install the NDK and either export ANDROID_NDK or "
             "pass -DANDROID_NDK=/path/to/android-ndk.")
 endif ()
 
 if (NOT IS_DIRECTORY "${ANDROID_NDK}")
-    message(FATAL_ERROR "[Pound] ANDROID_NDK does not exist: ${ANDROID_NDK}")
+    message(FATAL_ERROR "[Compound] ANDROID_NDK does not exist: ${ANDROID_NDK}")
 endif ()
 
 if (EXISTS "${ANDROID_NDK}/source.properties")
@@ -49,7 +49,7 @@ if (EXISTS "${ANDROID_NDK}/source.properties")
 
     if (_ndk_rev AND NOT _ndk_rev STREQUAL POUND_ANDROID_NDK_VERSION)
         message(STATUS
-                "[Pound] NDK revision ${_ndk_rev} differs from the pinned "
+                "[Compound] NDK revision ${_ndk_rev} differs from the pinned "
                 "${POUND_ANDROID_NDK_VERSION}.")
     endif ()
 endif ()

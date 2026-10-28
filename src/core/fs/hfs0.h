@@ -87,7 +87,7 @@
 //!
 //! ## What this parser does not do
 //!
-//! It does not decrypt. Every HFS0 Pound will meet is inside encrypted storage -- an XCI's
+//! It does not decrypt. Every HFS0 Compound will meet is inside encrypted storage -- an XCI's
 //! entries are encrypted NCAs, and an update NCA's section 0 is a section whose
 //! encryption was arranged by the NCA parser. What reaches this parser is plaintext. It
 //! also does not know about hierarchies: names are flat strings that may contain forward

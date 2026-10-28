@@ -4,7 +4,7 @@
 //!
 //! Every system call has two ways to go wrong, and they must not look alike: something
 //! Horizon itself refuses, which is a `Result` in `X0` and a completed call, and something
-//! Pound has not implemented, which is an error code and a trap left standing. A guest can
+//! Compound has not implemented, which is an error code and a trap left standing. A guest can
 //! see the first and cannot see the second, so a case that asserts the *error code* and a
 //! case that asserts the *Result* are testing opposite things even when they feed the
 //! layer the same shape of bad input.
@@ -53,7 +53,7 @@
 /// `svcConnectToNamedPort`, `svcCreateThread`, `svcGetThreadPriority` and `svcGetThreadId`
 /// answer in `W1`/`X1` the same way -- and the caller's *stub* is what stores that register
 /// through the out-pointer the caller passed (libnx's `svc.s` does `str x0, [sp, #-16]!;
-/// svc ...; ldr x2, [sp], #16; str w1, [x2]`). Pound sets the register *and* writes the
+/// svc ...; ldr x2, [sp], #16; str w1, [x2]`). Compound sets the register *and* writes the
 /// slot directly, so a case that read only one of the two would pass against a layer that
 /// answered in the wrong place for the other convention. These slots are the second place.
 #define TEST_OUT_SLOT_0 (TEST_GUEST_BASE + 0x4000ULL)
@@ -426,7 +426,7 @@ POUND_TEST(hos_syscall, name_table)
                        "svcCancelSynchronization");
     POUND_CHECK_STR_EQ(hos_syscall_name(HOS_SVC_CONNECT_TO_NAMED_PORT), "svcConnectToNamedPort");
 
-    // Known to Horizon and named, even though Pound does not implement it: the name is
+    // Known to Horizon and named, even though Compound does not implement it: the name is
     // what makes the refusal below readable.
     POUND_CHECK_STR_EQ(hos_syscall_name(0x21U), "svcSendSyncRequest");
     POUND_CHECK_STR_EQ(hos_syscall_name(0x01U), "svcSetHeapSize");
@@ -440,7 +440,7 @@ POUND_TEST(hos_syscall, unimplemented_call_is_refused_and_leaves_the_trap)
 {
     machine_reset();
 
-    // A number Horizon defines and Pound does not implement: the refusal must name it.
+    // A number Horizon defines and Compound does not implement: the refusal must name it.
     g_state.x[0] = 0U;
     pound_test_log_reset();
     POUND_CHECK_EQ_U64(call(0x21U), POUND_ERROR_UNSUPPORTED_SYSCALL);
@@ -991,7 +991,7 @@ POUND_TEST(hos_syscall, wait_synchronization_polls_the_handles)
     POUND_CHECK_EQ_U64(g_state.x[0], HOS_RESULT_SUCCESS);
 
     // The index of the handle that was ready, counted from zero in the array. It lands in
-    // two places: the slot through the pointer in X0 (Pound's belt-and-braces), and the
+    // two places: the slot through the pointer in X0 (Compound's belt-and-braces), and the
     // register W1, which is Horizon's actual `(Out)` and which the caller's stub stores
     // through that pointer itself. Both are asserted, because a layer that set only one
     // would satisfy one convention and silently break the other.
@@ -1187,7 +1187,7 @@ POUND_TEST(hos_syscall, connect_to_named_port_returns_a_session)
 
     // The handle lands in two places: the register W1 (Horizon's `(Out)`, and what the
     // caller's stub stores through the pointer in X0), and the slot through that pointer
-    // directly (Pound's belt-and-braces). The slot is read here, and W1 is asserted too --
+    // directly (Compound's belt-and-braces). The slot is read here, and W1 is asserted too --
     // a layer that answered in only one of the two would break the other convention.
     const hos_handle_t session = (hos_handle_t)(uint32_t)read_u64_at(TEST_OUT_SLOT_0);
     POUND_CHECK(session != HOS_HANDLE_INVALID);
@@ -1261,7 +1261,7 @@ POUND_TEST(hos_syscall, connect_to_a_service_pound_does_not_have_is_a_question)
     pound_test_log_reset();
     POUND_CHECK_EQ_U64(call(HOS_SVC_CONNECT_TO_NAMED_PORT), POUND_ERROR_NOT_FOUND);
 
-    // Not a guest-visible failure and not logged: this is a gap in Pound, and handing
+    // Not a guest-visible failure and not logged: this is a gap in Compound, and handing
     // back a `Result` for it would make the emulator look like firmware that answered.
     POUND_CHECK_EQ_U64(pound_test_log_count(), 0U);
     POUND_CHECK_EQ_U64(g_state.x[0], 0xABCDULL);
@@ -1772,7 +1772,7 @@ POUND_TEST(hos_syscall, an_out_of_range_priority_is_refused_not_answered)
     machine_reset();
     machine_add_scheduler();
 
-    // Horizon refuses a priority outside 0..0x3F, but Pound has not established which
+    // Horizon refuses a priority outside 0..0x3F, but Compound has not established which
     // Result word it uses. Answering one would be a value a guest could branch on that
     // nobody verified, so the call is refused and the trap is left standing.
     g_state.x[0] = TEST_OUT_SLOT_0;

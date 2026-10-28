@@ -181,7 +181,7 @@ bal_pound_protect_rw(bal_allocator_handle_t allocator, bal_executable_buffer_t b
     if (POUND_UNLIKELY(POUND_SUCCESS != result))
     {
         // The cache has already logged the platform-level cause. This line records
-        // that the engine -- not Pound's own JIT -- is what asked, which is the
+        // that the engine -- not Compound's own JIT -- is what asked, which is the
         // difference between a cache bug and an integration bug.
         POUND_LOG_ERROR(&thread_logger,
                         "Ballistic's protect_rw on the %zu-byte block at %p failed with \"%s\". The "
@@ -222,7 +222,7 @@ bal_pound_protect_rx(bal_allocator_handle_t allocator, bal_executable_buffer_t b
     {
         // This is the failure that matters most. The block holds machine code that
         // the engine is about to jump to, and if it is still read-write the jump
-        // succeeds on every platform Pound targets and then the CPU executes
+        // succeeds on every platform Compound targets and then the CPU executes
         // whatever policy the host applied -- on a hardened Linux or Android build,
         // nothing at all.
         POUND_LOG_ERROR(&thread_logger,

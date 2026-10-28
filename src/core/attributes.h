@@ -27,7 +27,7 @@
 #define POUND_COMPILER_GCC    1
 
 #else
-#error "Unsupported compiler: Pound requires Clang, clang-cl or GCC."
+#error "Unsupported compiler: Compound requires Clang, clang-cl or GCC."
 #endif
 
 // -----------------------------------------------------------------------------

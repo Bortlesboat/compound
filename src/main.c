@@ -1,6 +1,9 @@
 #include "gui/gui.h"
 #include "log.h"
 #include "memory/memory.h"
+#include "gpu/vulkan/vulkan_backend.h"
+#include "loader/title_loader.h"
+#include "loader/boot/boot.h"
 
 #include <SDL3/SDL.h>
 
@@ -94,6 +97,13 @@ main(int argc, char *argv[])
     pound_logger_init_default();
     memory_subsystem_init();
     (void)memory_subsystem_set_bucket(MEMORY_BUCKET_UI);
+    pound_title_loader_init();
+    pound_vulkan_backend_t *vulkan_backend = NULL;
+    pound_vulkan_config_t vulkan_cfg = {0};
+    vulkan_cfg.application_name = "Compound";
+    (void)pound_vulkan_init(&vulkan_backend, &vulkan_cfg);
+    pound_boot_state_t boot_state = {0};
+    (void)pound_boot_init(&boot_state);
 
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -154,6 +164,16 @@ main(int argc, char *argv[])
     }
 
     POUND_LOG_INFO(&thread_logger, "Starting main loop on %s.", POUND_PLATFORM_NAME);
+    if (argc > 1)
+    {
+        pound_title_info_t title_info;
+        if (pound_title_detect(argv[1], &title_info) == POUND_SUCCESS)
+        {
+            (void)pound_title_load(&title_info);
+            (void)pound_boot_load_title(&boot_state, &title_info);
+            (void)pound_boot_start(&boot_state);
+        }
+    }
 
     // Diagnostic only: see app_memory_churn_requested().
     const bool run_memory_selftest = app_memory_churn_requested(argc, argv);
@@ -180,6 +200,10 @@ main(int argc, char *argv[])
 
     app_gui_shutdown(&app);
     app_video_shutdown(&app);
+    if (vulkan_backend != NULL)
+    {
+        pound_vulkan_shutdown(vulkan_backend);
+    }
     memory_subsystem_destroy();
     SDL_Quit();
 
@@ -216,7 +240,7 @@ app_video_init(app_t *app)
 
     POUND_LOG_DEBUG(&thread_logger, "Configuring video subsystem...");
 
-    if (!SDL_SetHint(SDL_HINT_APP_NAME, "Pound Emulator"))
+    if (!SDL_SetHint(SDL_HINT_APP_NAME, "Compound Emulator"))
     {
         POUND_LOG_WARN(
             &thread_logger, "Failed to set SDL application name because %s.", SDL_GetError());
@@ -256,7 +280,7 @@ app_video_init(app_t *app)
         }
     }
 
-    app->window = SDL_CreateWindow("Pound Emulator",
+    app->window = SDL_CreateWindow("Compound Emulator",
                                    1270,
                                    720,
                                    SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
@@ -724,7 +748,7 @@ app_hot_reload_init(app_t *app)
 
 #if !POUND_PLATFORM_SUPPORTS_HOT_RELOAD
 
-    // Android ships PoundGui as a static library: SDL_GetBasePath() resolves
+    // Android ships CompoundGui as a static library: SDL_GetBasePath() resolves
     // inside the read-only APK, so there is nowhere writable to copy a freshly
     // linked image to and no way to dlopen an arbitrary path. The same
     // `gui_plugin_exports_t` vtable the loader would have populated is resolved
@@ -1026,7 +1050,7 @@ app_render_frozen_overlay(app_t *app)
                                    | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar
                                    | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings;
 
-    if (igBegin("Pound GUI Frozen", NULL, flags))
+    if (igBegin("Compound GUI Frozen", NULL, flags))
     {
         igText("GUI is frozen due to a hot reload failure.");
         igSeparator();

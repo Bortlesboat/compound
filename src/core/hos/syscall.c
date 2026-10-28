@@ -57,6 +57,8 @@ static error_t svc_output_debug_string(hos_syscall_context_t *context, guest_sta
 static error_t svc_flush_entire_data_cache(hos_syscall_context_t *context, guest_state_t *state);
 static error_t svc_flush_data_cache(hos_syscall_context_t *context, guest_state_t *state);
 static error_t svc_sleep_system(hos_syscall_context_t *context, guest_state_t *state);
+static error_t svc_map_memory(hos_syscall_context_t *context, guest_state_t *state);
+static error_t svc_unmap_memory(hos_syscall_context_t *context, guest_state_t *state);
 
 // -----------------------------------------------------------------------------
 // The table
@@ -92,11 +94,13 @@ static const hos_syscall_entry_t HOS_SYSCALLS[] = {
     { HOS_SVC_FLUSH_DATA_CACHE, "svcFlushDataCache", svc_flush_data_cache },
     { HOS_SVC_CREATE_EVENT, "svcCreateEvent", svc_create_event },
     { HOS_SVC_SLEEP_SYSTEM, "svcSleepSystem", svc_sleep_system },
+    { HOS_SVC_MAP_MEMORY, "svcMapMemory", svc_map_memory },
+    { HOS_SVC_UNMAP_MEMORY, "svcUnmapMemory", svc_unmap_memory },
 
     // Known, named, and deliberately not implemented. Each of these is waiting on a
     // slice that does not exist yet, and each says which one in the header.
-    { 0x04U, "svcMapMemory", NULL },
-    { 0x05U, "svcUnmapMemory", NULL },
+    { 0x13U, "svcMapSharedMemory", NULL },
+    { 0x14U, "svcUnmapSharedMemory", NULL },
     { 0x13U, "svcMapSharedMemory", NULL },
     { 0x14U, "svcUnmapSharedMemory", NULL },
     { 0x15U, "svcCreateTransferMemory", NULL },
@@ -411,7 +415,7 @@ svc_set_heap_size(hos_syscall_context_t *POUND_RESTRICT context, guest_state_t *
 
     if (error == POUND_ERROR_ALLOCATION_FAILED)
     {
-        // Pound's region table is its memory-block pool, and running out of descriptors is
+        // Compound's region table is its memory-block pool, and running out of descriptors is
         // exactly what Horizon reports as `0xCE01` for this call. Refusing with an emulator
         // error here would wedge a guest that mapped enough of its address space to fill the
         // table, which on hardware it would have survived.
@@ -522,7 +526,7 @@ svc_set_memory_attribute(hos_syscall_context_t *POUND_RESTRICT context, guest_st
 
     // The value must be a subset of the mask -- a bit a caller gives a value for must also
     // be one it is asking to change -- and neither may reach outside the single attribute
-    // Pound can change. Anything else is the kernel's `0xE801`.
+    // Compound can change. Anything else is the kernel's `0xE801`.
     const uint32_t supported = HOS_MEMORY_ATTRIBUTE_UNCACHED;
 
     if (((mask | value) != mask) || ((mask | value | supported) != supported))
@@ -603,7 +607,7 @@ svc_query_memory(hos_syscall_context_t *POUND_RESTRICT context, guest_state_t *P
 
     if (!write_guest_bytes(context, info_address, info, sizeof(info)))
     {
-        // Horizon's own `Result` for an unwritable `MemoryInfo` pointer is not one Pound has
+        // Horizon's own `Result` for an unwritable `MemoryInfo` pointer is not one Compound has
         // established, so the module's documented convention for an unwritable out-pointer
         // applies, and `W1` is left as the guest left it rather than given an invented value.
         state->x[0] = HOS_RESULT_INVALID_POINTER;
@@ -612,7 +616,7 @@ svc_query_memory(hos_syscall_context_t *POUND_RESTRICT context, guest_state_t *P
 
     // `W1` is Horizon's `(Out) W1 PageInfo`, always zero: the kernel reports no page-level
     // detail here. The caller's stub stores it through the `PageInfo` pointer it passed in
-    // X1, so it must be set even though Pound itself has nothing to say with it.
+    // X1, so it must be set even though Compound itself has nothing to say with it.
     state->x[0] = HOS_RESULT_SUCCESS;
     state->x[1] = 0U;
     return POUND_SUCCESS;
@@ -803,7 +807,7 @@ svc_create_event(hos_syscall_context_t *POUND_RESTRICT context, guest_state_t *P
 
     if (error == POUND_ERROR_ALLOCATION_FAILED)
     {
-        // Pound's object and handle tables are its event quota, and running out of slots
+        // Compound's object and handle tables are its event quota, and running out of slots
         // is exactly what Horizon reports as `0xCE01` for this call. Refusing with an
         // emulator error would wedge a guest that Horizon would have let run.
         state->x[0] = HOS_RESULT_SLAB_EXHAUSTED;
@@ -1032,7 +1036,7 @@ svc_cancel_synchronization(hos_syscall_context_t *POUND_RESTRICT context, guest_
         return error;
     }
 
-    // The refusal is about the *context*, not the request: without a run queue Pound cannot
+    // The refusal is about the *context*, not the request: without a run queue Compound cannot
     // name the thread that is calling, so a flag set here could never be consumed by a wait
     // and answering success would promise an interruption that cannot happen. The handle was
     // still resolved first, because Horizon's `0xE401` is the same on every machine.
@@ -1113,7 +1117,7 @@ svc_connect_to_named_port(hos_syscall_context_t *POUND_RESTRICT context, guest_s
         // handle.
         //
         // The handle is also written through the pointer `X0` held on entry. Hardware does
-        // not do this -- the stub does -- but Pound's guests read out-parameters through
+        // not do this -- the stub does -- but Compound's guests read out-parameters through
         // `X0`, so writing it keeps both conventions agreeing on the same handle. A guest
         // that only reads `W1` is unaffected by the extra write.
         if (!write_guest_u32(context, state->x[0], handle))
@@ -1135,7 +1139,7 @@ svc_connect_to_named_port(hos_syscall_context_t *POUND_RESTRICT context, guest_s
     if (error == POUND_ERROR_NOT_FOUND)
     {
         // Left as a code rather than turned into a Result: a title connecting to a
-        // service this build has not registered is a gap in Pound, not a failure the
+        // service this build has not registered is a gap in Compound, not a failure the
         // guest caused, and there is no honest Result for it. Not logged, per the
         // contract the code carries; the caller has the system call number and is
         // expected to report it.
@@ -1282,7 +1286,7 @@ svc_create_thread(hos_syscall_context_t *POUND_RESTRICT context, guest_state_t *
     // Horizon's signature: X0 is a pointer to the new handle, X1 the entry point, X2 the
     // argument, X3 the stack bottom, W4 the priority and W5 the core. The core is ignored
     // rather than checked: one scheduler is one core, and a title naming a second is asking
-    // for a second of something Pound has one of.
+    // for a second of something Compound has one of.
     const uint64_t out_handle_address = state->x[0];
     const uint64_t entry              = state->x[1];
     const uint64_t argument           = state->x[2];
@@ -1291,7 +1295,7 @@ svc_create_thread(hos_syscall_context_t *POUND_RESTRICT context, guest_state_t *
 
     if (priority > HOS_THREAD_PRIORITY_LOWEST)
     {
-        // A gap rather than a `Result`: Horizon refuses an out-of-range priority, but Pound
+        // A gap rather than a `Result`: Horizon refuses an out-of-range priority, but Compound
         // has not established which `Result` word it uses, and inventing one would be an
         // answer the guest could branch on that nobody verified.
         POUND_LOG_ERROR(&thread_logger,
@@ -1852,7 +1856,7 @@ hos_syscall_dispatch(hos_syscall_context_t *POUND_RESTRICT context,
     if (entry->handler == NULL)
     {
         POUND_LOG_ERROR(&thread_logger,
-                        "Refusing %s (0x%02X): Pound has not implemented it.",
+                        "Refusing %s (0x%02X): Compound has not implemented it.",
                         entry->name,
                         (unsigned int)number);
         return POUND_ERROR_UNSUPPORTED_SYSCALL;
@@ -1871,3 +1875,40 @@ hos_syscall_dispatch(hos_syscall_context_t *POUND_RESTRICT context,
 }
 
 /*** end of file ***/
+
+
+static error_t svc_map_memory(hos_syscall_context_t *context, guest_state_t *state)
+{
+    if(memory_call_needs_layout(context, "svcMapMemory")) return POUND_ERROR_UNSUPPORTED_SYSCALL;
+    const uint64_t dst_addr = state->x[0];
+    const uint64_t src_addr = state->x[1];
+    const uint64_t size = state->x[2];
+    const uint32_t perm = (uint32_t)state->x[3];
+    if((dst_addr % HOS_MEMORY_PAGE_SIZE)!=0U||(src_addr % HOS_MEMORY_PAGE_SIZE)!=0U||(size==0U)||(size % HOS_MEMORY_PAGE_SIZE)!=0U){state->x[0]=HOS_RESULT_INVALID_SIZE;return POUND_SUCCESS;}
+    uint32_t res = HOS_RESULT_SUCCESS;
+    error_t err = hos_memory_layout_map_alias(context->layout, src_addr, dst_addr, size, HOS_MEMORY_STATE_ALIAS, perm, 0U);
+    if(!memory_layout_error_to_result(err, &res)){
+        if(err==POUND_ERROR_INVALID_ARGUMENT) res = HOS_RESULT_INVALID_CURRENT_MEMORY;
+        else if(err==POUND_ERROR_ALLOCATION_FAILED) res = HOS_RESULT_SLAB_EXHAUSTED;
+        else if(err==POUND_ERROR_GUEST_ADDRESS_OUT_OF_BOUNDS||err==POUND_ERROR_GUEST_ADDRESS_OVERFLOW) res = HOS_RESULT_INVALID_ADDRESS;
+        else return err;
+    }
+    state->x[0]=res; return POUND_SUCCESS;
+}
+
+static error_t svc_unmap_memory(hos_syscall_context_t *context, guest_state_t *state)
+{
+    if(memory_call_needs_layout(context, "svcUnmapMemory")) return POUND_ERROR_UNSUPPORTED_SYSCALL;
+    const uint64_t addr = state->x[0];
+    const uint64_t size = state->x[1];
+    if((addr % HOS_MEMORY_PAGE_SIZE)!=0U||(size==0U)||(size % HOS_MEMORY_PAGE_SIZE)!=0U){state->x[0]=HOS_RESULT_INVALID_SIZE;return POUND_SUCCESS;}
+    uint32_t res = HOS_RESULT_SUCCESS;
+    error_t err = hos_memory_layout_unmap(context->layout, addr, size);
+    if(!memory_layout_error_to_result(err, &res)){
+        if(err==POUND_ERROR_INVALID_ARGUMENT) res = HOS_RESULT_INVALID_CURRENT_MEMORY;
+        else if(err==POUND_ERROR_ALLOCATION_FAILED) res = HOS_RESULT_SLAB_EXHAUSTED;
+        else if(err==POUND_ERROR_GUEST_ADDRESS_OUT_OF_BOUNDS||err==POUND_ERROR_GUEST_ADDRESS_OVERFLOW) res = HOS_RESULT_INVALID_ADDRESS;
+        else return err;
+    }
+    state->x[0]=res; return POUND_SUCCESS;
+}

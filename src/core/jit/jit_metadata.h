@@ -169,7 +169,7 @@
 
 /// Host registers a block's register map may describe.
 ///
-/// Eight is the size of a preserved-register save area on the targets Pound runs on
+/// Eight is the size of a preserved-register save area on the targets Compound runs on
 /// (x19-x28 plus frame pointer and link register), which is the set a block that
 /// honours the ABI has to account for. See the module comment for why exceeding it
 /// means the block should be split rather than the cap raised.

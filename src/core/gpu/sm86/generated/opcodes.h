@@ -1,6 +1,6 @@
 //! GENERATED_FILE - DO NOT EDIT
 //!
-//! Ported from the Pound graphics reference implementation
+//! Ported from the Compound graphics reference implementation
 //! (`pound-emu/pound`, `tools/sm86/generate_sm86.py`). The opcode set is the
 //! SM70/SM86 opcode table that the Mesa `nak/sm70_encode.rs` back end uses; the
 //! generated table is reproduced here verbatim so the decoder and the IR share

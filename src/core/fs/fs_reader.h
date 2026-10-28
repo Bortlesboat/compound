@@ -3,7 +3,7 @@
 
 //! A random-access byte source, and the only way container parsers see file data.
 //!
-//! Every format Pound reads -- XCI, NCA, PFS0, HFS0 -- is a header followed by large
+//! Every format Compound reads -- XCI, NCA, PFS0, HFS0 -- is a header followed by large
 //! opaque regions that must *not* be read into memory. A Switch 2 game is tens of
 //! gigabytes; the executable is tens of megabytes; the PFS0 string table inside an NCA
 //! can sit forty gigabytes into the image. A parser that took a `uint8_t *` covering
@@ -48,7 +48,7 @@ typedef struct
 
     /// Reads exactly `size` bytes from `offset` into `destination`.
     ///
-    /// A short read is an error, not a partial success. Every caller in Pound wants a
+    /// A short read is an error, not a partial success. Every caller in Compound wants a
     /// whole structure, and a parser handed a half-filled one would go on to interpret
     /// whatever happened to be in the untouched bytes. So a read that cannot be
     /// completed in full returns `POUND_ERROR_IO` and leaves the caller's buffer in an

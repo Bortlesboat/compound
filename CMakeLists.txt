@@ -31,7 +31,7 @@ if (NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 endif ()
 
-project(Pound LANGUAGES C CXX VERSION 0.1.0)
+project(Compound LANGUAGES C CXX VERSION 0.1.0)
 
 include(CompilerFlags)
 include(Platform)
@@ -50,7 +50,7 @@ pound_resolve_sanitizers()
 # -----------------------------------------------------------------------------
 
 option(POUND_BUILD_TESTS
-        "Build the Pound unit test suite and register it with CTest"
+        "Build the Compound unit test suite and register it with CTest"
         ON
         )
 
@@ -60,13 +60,13 @@ option(POUND_ENABLE_INSTALL_RULES
         )
 
 option(POUND_LINK_GUI_STATICALLY
-        "Link PoundGui into the emulator image instead of loading it at runtime"
+        "Link CompoundGui into the emulator image instead of loading it at runtime"
         ${POUND_TARGET_IS_ANDROID}
         )
 
 if (POUND_LINK_GUI_STATICALLY AND POUND_PLATFORM_SUPPORTS_HOT_RELOAD)
     message(STATUS
-            "[Pound] GUI will be linked statically; the hot-reload loader in src/main.c "
+            "[Compound] GUI will be linked statically; the hot-reload loader in src/main.c "
             "is bypassed at runtime.")
 endif ()
 
@@ -120,14 +120,14 @@ endif ()
 # -----------------------------------------------------------------------------
 
 message(STATUS "==================================================================")
-message(STATUS "[Pound] Configuring Pound Emulator v${PROJECT_VERSION}")
-message(STATUS "[Pound] Build Type:  ${CMAKE_BUILD_TYPE}")
-message(STATUS "[Pound] Target OS:   ${CMAKE_SYSTEM_NAME} (${POUND_PLATFORM})")
-message(STATUS "[Pound] Target CPU:  ${CMAKE_SYSTEM_PROCESSOR} (${POUND_TARGET_ARCHITECTURE})")
-message(STATUS "[Pound] Compiler:    ${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION}")
-message(STATUS "[Pound] Binaries:    ${POUND_BINARIES_DIRECTORY}")
-message(STATUS "[Pound] Libraries:   ${POUND_LIBRARIES_DIRECTORY}")
-message(STATUS "[Pound] Tests:       ${POUND_BUILD_TESTS}")
+message(STATUS "[Compound] Configuring Compound Emulator v${PROJECT_VERSION}")
+message(STATUS "[Compound] Build Type:  ${CMAKE_BUILD_TYPE}")
+message(STATUS "[Compound] Target OS:   ${CMAKE_SYSTEM_NAME} (${POUND_PLATFORM})")
+message(STATUS "[Compound] Target CPU:  ${CMAKE_SYSTEM_PROCESSOR} (${POUND_TARGET_ARCHITECTURE})")
+message(STATUS "[Compound] Compiler:    ${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION}")
+message(STATUS "[Compound] Binaries:    ${POUND_BINARIES_DIRECTORY}")
+message(STATUS "[Compound] Libraries:   ${POUND_LIBRARIES_DIRECTORY}")
+message(STATUS "[Compound] Tests:       ${POUND_BUILD_TESTS}")
 
 # `src/core/sync/mutex.c` maps onto pthread on POSIX. Modern glibc folds
 # libpthread into libc, but older toolchains and musl-based Android NDKs do not,
@@ -135,12 +135,12 @@ message(STATUS "[Pound] Tests:       ${POUND_BUILD_TESTS}")
 # than an undefined-reference at link time on one CI lane only.
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
-message(STATUS "[Pound] Threads:      ${CMAKE_THREAD_LIBS_INIT} (${Threads_FOUND})")
-message(STATUS "[Pound] Sanitizers:  ${POUND_SANITIZERS}")
+message(STATUS "[Compound] Threads:      ${CMAKE_THREAD_LIBS_INIT} (${Threads_FOUND})")
+message(STATUS "[Compound] Sanitizers:  ${POUND_SANITIZERS}")
 message(STATUS "==================================================================")
 
 if (POUND_TARGET_IS_ANDROID)
-    message(STATUS "[Pound] Android ABI: ${POUND_ANDROID_ABI_DIR}")
+    message(STATUS "[Compound] Android ABI: ${POUND_ANDROID_ABI_DIR}")
 endif ()
 
 # -----------------------------------------------------------------------------
@@ -152,20 +152,20 @@ if (POUND_ENABLE_LINK_TIME_OPTIMIZATION)
     check_ipo_supported(RESULT ipo_supported OUTPUT ipo_error)
 
     if (ipo_supported)
-        message(STATUS "[Pound] Link Time Optimization is ENABLED and supported.")
+        message(STATUS "[Compound] Link Time Optimization is ENABLED and supported.")
         set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
     else ()
         message(WARNING
-                "[Pound] Link Time Optimization was requested but is NOT supported by your compiler, disabling LTO. "
+                "[Compound] Link Time Optimization was requested but is NOT supported by your compiler, disabling LTO. "
                 "Reason: ${ipo_error}")
         set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
     endif ()
 else ()
-    message(STATUS "[Pound] Link Time Optimization is DISABLED via CMake options.")
+    message(STATUS "[Compound] Link Time Optimization is DISABLED via CMake options.")
 endif ()
 
 # -----------------------------------------------------------------------------
-# Compile Pound
+# Compile Compound
 # -----------------------------------------------------------------------------
 
 include(Ballistic)
@@ -197,7 +197,7 @@ message(STATUS "[ImGUI] Configuring ImGUI...")
 # cimgui's own CMakeLists is deliberately not added as a subdirectory. It would
 # define a `cimgui` target built from exactly the sources listed below, plus an
 # unconditional `install(TARGETS cimgui ...)` rule that drops an unused
-# cimgui.dll and its import library at the root of the install prefix. Pound
+# cimgui.dll and its import library at the root of the install prefix. Compound
 # links the `imgui` target defined just below and never the `cimgui` one, so
 # pulling the subproject in would double the ImGui compile time and pollute the
 # staged tree with a DLL nothing loads.
@@ -271,7 +271,7 @@ if (POUND_TARGET_IS_ANDROID)
     set(SDL_SHARED OFF CACHE BOOL "" FORCE)
     set(SDL_STATIC ON  CACHE BOOL "" FORCE)
 else ()
-    # Shared SDL so Pound and imgui use one SDL instance.
+    # Shared SDL so Compound and imgui use one SDL instance.
     set(SDL_SHARED ON  CACHE BOOL "" FORCE)
     set(SDL_STATIC OFF CACHE BOOL "" FORCE)
 endif ()
@@ -327,8 +327,8 @@ if (TARGET SDL3-shared)
     )
 endif ()
 
-message(STATUS "[PoundCore] Configuring Pound Core Library...")
-add_library(PoundCore OBJECT
+message(STATUS "[CompoundCore] Configuring Compound Core Library...")
+add_library(CompoundCore OBJECT
         src/core/errors.c
         src/core/memory/memory.c
         src/core/memory/guest_memory.c
@@ -357,20 +357,23 @@ add_library(PoundCore OBJECT
         src/core/gpu/sm86/ir.c
         src/core/gpu/sm86/spirv.c
         src/core/gpu/sm86/translate.c
+        src/core/gpu/vulkan/vulkan_backend.c
+        src/core/loader/title_loader.c
+        src/core/loader/boot/boot.c
         src/core/log.c
         src/core/safe_math.c
 )
-target_include_directories(PoundCore PUBLIC src/core)
-target_link_libraries(PoundCore PRIVATE ${POUND_MIMALLOC_TARGET} Threads::Threads)
-set_target_properties(PoundCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
-add_compiler_flags(PoundCore)
-add_linker_flags(PoundCore)
-add_sanitizers(PoundCore)
+target_include_directories(CompoundCore PUBLIC src/core)
+target_link_libraries(CompoundCore PRIVATE ${POUND_MIMALLOC_TARGET} Threads::Threads)
+set_target_properties(CompoundCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+add_compiler_flags(CompoundCore)
+add_linker_flags(CompoundCore)
+add_sanitizers(CompoundCore)
 
-message(STATUS "[PoundGUI] Configuring Pound GUI Library...")
+message(STATUS "[CompoundGUI] Configuring Compound GUI Library...")
 
 if (POUND_LINK_GUI_STATICALLY)
-    add_library(PoundGui STATIC
+    add_library(CompoundGui STATIC
             src/gui/gui.c
             src/gui/gui_hot_reload.c
             src/gui/gui_layout.c
@@ -388,9 +391,9 @@ if (POUND_LINK_GUI_STATICALLY)
     )
     # A static archive must keep its entry points visible or the executable's
     # link would drop them as unreferenced before src/main.c can bind to them.
-    set_target_properties(PoundGui PROPERTIES C_VISIBILITY_PRESET default)
+    set_target_properties(CompoundGui PROPERTIES C_VISIBILITY_PRESET default)
 else ()
-    add_library(PoundGui SHARED
+    add_library(CompoundGui SHARED
             src/gui/gui.c
             src/gui/gui_hot_reload.c
             src/gui/gui_layout.c
@@ -406,28 +409,28 @@ else ()
             src/gui/debug/debug_memory_data.c
             src/gui/debug/debug_memory_render.c
     )
-    set_target_properties(PoundGui PROPERTIES C_VISIBILITY_PRESET hidden)
-    set_target_properties(PoundGui PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+    set_target_properties(CompoundGui PROPERTIES C_VISIBILITY_PRESET hidden)
+    set_target_properties(CompoundGui PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
     if (WIN32)
         # MSVC/clang-cl do not prefix DLLs with "lib"; the loader looks for
-        # libPoundGui.dll.
-        set_target_properties(PoundGui PROPERTIES PREFIX "lib")
+        # libCompoundGui.dll.
+        set_target_properties(CompoundGui PROPERTIES PREFIX "lib")
     endif ()
 endif ()
 
-target_include_directories(PoundGui PUBLIC src/gui src/core)
+target_include_directories(CompoundGui PUBLIC src/gui src/core)
 
 # The version string the About page shows. Taken from `project(... VERSION ...)` at
 # the top of this file so the number a user reads out of a bug report and the number
 # a package is labelled with are the same number by construction.
-target_compile_definitions(PoundGui PRIVATE POUND_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(CompoundGui PRIVATE POUND_VERSION="${PROJECT_VERSION}")
 
-# `PoundGui` calls into core -- `thread_logger`, `pound_log_message`,
+# `CompoundGui` calls into core -- `thread_logger`, `pound_log_message`,
 # `memory_subsystem_get_memory_used_by_bucket`, `safe_math_error_string` -- so it
 # has to resolve those symbols at link time.
 #
-# On desktop `PoundGui` is a SHARED image and linking `PoundCore` embeds the core
+# On desktop `CompoundGui` is a SHARED image and linking `CompoundCore` embeds the core
 # objects into it, which is what makes the DLL self-contained: an unresolved
 # symbol in a shared object is resolved against whatever happens to be loaded
 # first, so relying on the host to export them would work on Windows by accident
@@ -435,28 +438,28 @@ target_compile_definitions(PoundGui PRIVATE POUND_VERSION="${PROJECT_VERSION}")
 # plugin's own thread-local logger so those records are emitted rather than
 # silently dropped.
 #
-# On Android `PoundGui` is STATIC, and a static archive does not consume an
+# On Android `CompoundGui` is STATIC, and a static archive does not consume an
 # OBJECT library's objects, so the plugin image stays core-free and `libmain.so`
 # supplies the single copy -- which is what we want there.
 #
-# Windows loads PoundGui before the EXE finishes its own imports. Listing
-# mimalloc ahead of imgui keeps mimalloc-redirect ahead of ucrt in PoundGui's
+# Windows loads CompoundGui before the EXE finishes its own imports. Listing
+# mimalloc ahead of imgui keeps mimalloc-redirect ahead of ucrt in CompoundGui's
 # import table.
-target_link_libraries(PoundGui PRIVATE ${POUND_MIMALLOC_TARGET} imgui PoundCore SDL3::SDL3)
+target_link_libraries(CompoundGui PRIVATE ${POUND_MIMALLOC_TARGET} imgui CompoundCore SDL3::SDL3)
 
 if (MSVC)
-    target_link_options(PoundGui PRIVATE "/INCLUDE:mi_version")
+    target_link_options(CompoundGui PRIVATE "/INCLUDE:mi_version")
 endif ()
 
-add_compiler_flags(PoundGui)
-add_linker_flags(PoundGui)
-add_sanitizers(PoundGui)
+add_compiler_flags(CompoundGui)
+add_linker_flags(CompoundGui)
+add_sanitizers(CompoundGui)
 
-message(STATUS "[Pound] Configuring Pound Emulator...")
+message(STATUS "[Compound] Configuring Compound Emulator...")
 
 # `jit_ballistic.c` is the only translation unit that includes the engine's headers,
 # so it is added only where the engine is actually linked. The code cache it binds
-# lives in PoundCore and is built everywhere, which is what lets the Android and
+# lives in CompoundCore and is built everywhere, which is what lets the Android and
 # aarch64 lanes test the W^X allocator even with no ARM64 prebuild present.
 set(POUND_EMULATOR_SOURCES src/main.c)
 
@@ -478,8 +481,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE src/)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
         ${POUND_MIMALLOC_TARGET}
-        PoundCore
-        PoundGui
+        CompoundCore
+        CompoundGui
         Ballistic::Engine
         SDL3::SDL3
         imgui
@@ -507,7 +510,7 @@ add_sanitizers(${PROJECT_NAME})
 
 if (POUND_TARGET_IS_ANDROID)
     # First pass at configure time: creates jniLibs/<abi> and copies anything
-    # produced by the dependency build before Pound itself is compiled.
+    # produced by the dependency build before Compound itself is compiled.
     pound_collect_jni_artifacts("${CMAKE_BINARY_DIR}")
 
     # Second pass after the link, when libmain.so actually exists.
@@ -516,7 +519,7 @@ if (POUND_TARGET_IS_ANDROID)
             -DPOUND_STAGE_DIR=${CMAKE_BINARY_DIR}
             -DPOUND_STAGE_SOURCE=$<TARGET_FILE:${PROJECT_NAME}>
             -P ${CMAKE_SOURCE_DIR}/cmake/StageJniArtifacts.cmake
-            COMMENT "[Pound] Staging JNI artifacts for ${POUND_ANDROID_ABI_DIR}"
+            COMMENT "[Compound] Staging JNI artifacts for ${POUND_ANDROID_ABI_DIR}"
             VERBATIM
     )
 endif ()
@@ -529,7 +532,7 @@ if (POUND_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 else ()
-    message(STATUS "[Pound] Tests are DISABLED via CMake options.")
+    message(STATUS "[Compound] Tests are DISABLED via CMake options.")
 endif ()
 
 # -----------------------------------------------------------------------------
@@ -545,17 +548,17 @@ if (POUND_ENABLE_INSTALL_RULES)
         install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION "${POUND_INSTALL_BIN_DIR}")
 
         if (NOT POUND_LINK_GUI_STATICALLY)
-            install(TARGETS PoundGui imgui
+            install(TARGETS CompoundGui imgui
                     RUNTIME DESTINATION "${POUND_INSTALL_BIN_DIR}"
                     LIBRARY DESTINATION "${POUND_INSTALL_LIB_DIR}"
             )
         endif ()
 
         # SDL's own install rules are switched off above (SDL_INSTALL=OFF) so a
-        # Pound release ships neither SDL's headers, its pkg-config file, nor its
+        # Compound release ships neither SDL's headers, its pkg-config file, nor its
         # CMake package config -- none of which the emulator needs at run time.
         # The consequence is that the SDL runtime is no longer staged either,
-        # and the loader cannot find SDL3.dll next to Pound.exe, so the
+        # and the loader cannot find SDL3.dll next to Compound.exe, so the
         # installed executable fails to start. Stage it explicitly.
         #
         # Android is excluded because it links SDL statically (see above), and
@@ -580,9 +583,9 @@ if (POUND_ENABLE_INSTALL_RULES)
             OPTIONAL
     )
 else ()
-    message(STATUS "[Pound] Install rules are DISABLED via CMake options.")
+    message(STATUS "[Compound] Install rules are DISABLED via CMake options.")
 endif ()
 
 message(STATUS "==================================================================")
-message(STATUS "[Pound] Cmake configuration completed successfully.")
+message(STATUS "[Compound] Cmake configuration completed successfully.")
 message(STATUS "==================================================================")

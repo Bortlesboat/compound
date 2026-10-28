@@ -53,7 +53,7 @@ print_usage(const char *argv0)
 int
 main(int argc, char **argv)
 {
-    // Every Pound entry point logs on its error path, and the suite
+    // Every Compound entry point logs on its error path, and the suite
     // deliberately drives those paths. Route them into the capture buffer so
     // they are assertable rather than noise.
     pound_test_log_capture_begin();

@@ -51,6 +51,10 @@ typedef struct
 
     /// `svcQueryMemory`'s device count field.
     uint32_t device_count;
+
+    /// If non-zero and the region is an alias, this points to the physical/alias base
+    /// guest address this region maps to (for aliased mappings). 0 means no alias.
+    uint64_t alias_base;
 } guest_memory_region_t;
 
 /// Read access, matching Horizon `MemoryPermission` bit 0.

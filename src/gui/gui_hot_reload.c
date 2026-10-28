@@ -17,12 +17,35 @@
 
 #else
 
+#include <unistd.h>
 #include <dlfcn.h>
 #include <sys/stat.h>
 
 #endif // POUND_PLATFORM_WINDOWS
 
 static uint32_t hot_counter = 0;
+
+/// The running process's id, used to keep hot-reload copies private.
+///
+/// The counter below restarts at 1 in every process, so two Compound instances
+/// running from one build directory would both copy the plugin to
+/// `<plugin>.hot_1.dll`. The second copy then fails, because the first instance has
+/// that file mapped, and the GUI froze with no explanation. A pid in the name makes
+/// the copy unambiguous per process.
+static uint32_t hot_process_id(void)
+{
+#if POUND_PLATFORM_WINDOWS
+    return (uint32_t)GetCurrentProcessId();
+#else
+    return (uint32_t)getpid();
+#endif
+}
+
+/// Removes the copy this call made, and never the plugin itself.
+///
+/// A load that fell back to the original path must not delete it on failure.
+static void remove_loaded_copy(const char *path, const bool is_copy);
+
 
 /// Signature of the plugin's single exported entry point.
 ///
@@ -42,6 +65,14 @@ static bool  shared_library_create_loaded_path(const char *source,
 bool
 gui_plugin_load_module(gui_plugin_t *POUND_RESTRICT plugin, const char *POUND_RESTRICT source_path)
 {
+    // The hot-reload module carries its own copy of the core, so the plugin's
+    // `thread_logger` starts with no sink: every failure below would otherwise be
+    // logged into nothing and the interface would freeze with no explanation.
+    if (NULL == thread_logger.log)
+    {
+        pound_logger_init_default();
+    }
+
     if (NULL == plugin)
     {
         POUND_LOG_ERROR(&thread_logger, "Aborting function: plugin is NULL.");
@@ -88,12 +119,30 @@ gui_plugin_load_module(gui_plugin_t *POUND_RESTRICT plugin, const char *POUND_RE
 
     if (false == copy_file(source_path, loaded_path))
     {
-        POUND_LOG_ERROR(&thread_logger,
-                        "Aborting function: failed to copy '%s' to '%s'.",
-                        source_path,
-                        loaded_path);
-        return false;
+        // A copy is what lets the plugin be replaced while it is mapped: Windows
+        // cannot overwrite a file that a process has loaded. When the copy cannot
+        // be made -- another instance holding the name, or a read-only build
+        // directory -- loading the original in place still gives a working
+        // interface, which is better than freezing it.
+        POUND_LOG_WARN(&thread_logger,
+                       "Could not copy '%s' to '%s'; loading the plugin in place. Hot reload "
+                       "will not be able to replace it while it is mapped.",
+                       source_path,
+                       loaded_path);
+
+        const int written = snprintf(loaded_path, sizeof(loaded_path), "%s", source_path);
+
+        if ((written < 0) || ((size_t)written >= sizeof(loaded_path)))
+        {
+            POUND_LOG_ERROR(&thread_logger,
+                            "Aborting function: source path '%s' does not fit in %zu bytes.",
+                            source_path,
+                            sizeof(loaded_path));
+            return false;
+        }
     }
+
+    const bool is_copy = (0 != strcmp(loaded_path, source_path));
 
     void *POUND_RESTRICT module = shared_library_load(loaded_path);
 
@@ -102,13 +151,7 @@ gui_plugin_load_module(gui_plugin_t *POUND_RESTRICT plugin, const char *POUND_RE
         POUND_LOG_ERROR(
             &thread_logger, "Aborting function: failed to load shared library '%s'.", loaded_path);
 
-        if (remove(loaded_path) != 0)
-        {
-            POUND_LOG_WARN(&thread_logger,
-                           "Aborting function: also failed to remove stale file '%s'.",
-                           loaded_path);
-        }
-
+        remove_loaded_copy(loaded_path, is_copy);
         return false;
     }
 
@@ -121,11 +164,7 @@ gui_plugin_load_module(gui_plugin_t *POUND_RESTRICT plugin, const char *POUND_RE
                         loaded_path);
         shared_library_unload(module);
 
-        if (remove(loaded_path) != 0)
-        {
-            POUND_LOG_WARN(
-                &thread_logger, "Failed to remove '%s' after symbol failure.", loaded_path);
-        }
+        remove_loaded_copy(loaded_path, is_copy);
         return false;
     }
 
@@ -137,10 +176,7 @@ gui_plugin_load_module(gui_plugin_t *POUND_RESTRICT plugin, const char *POUND_RE
 
         shared_library_unload(module);
 
-        if (remove(loaded_path) != 0)
-        {
-            POUND_LOG_WARN(&thread_logger, "Failed to remove '%s'.", loaded_path);
-        }
+        remove_loaded_copy(loaded_path, is_copy);
 
         return false;
     }
@@ -155,10 +191,7 @@ gui_plugin_load_module(gui_plugin_t *POUND_RESTRICT plugin, const char *POUND_RE
                         loaded_path);
         shared_library_unload(module);
 
-        if (remove(loaded_path) != 0)
-        {
-            POUND_LOG_WARN(&thread_logger, "Failed to remove '%s'.", loaded_path);
-        }
+        remove_loaded_copy(loaded_path, is_copy);
 
         return false;
     }
@@ -174,10 +207,7 @@ gui_plugin_load_module(gui_plugin_t *POUND_RESTRICT plugin, const char *POUND_RE
                         loaded_path);
         shared_library_unload(module);
 
-        if (remove(loaded_path) != 0)
-        {
-            POUND_LOG_WARN(&thread_logger, "Failed to remove '%s'.", loaded_path);
-        }
+        remove_loaded_copy(loaded_path, is_copy);
 
         return false;
     }
@@ -188,10 +218,7 @@ gui_plugin_load_module(gui_plugin_t *POUND_RESTRICT plugin, const char *POUND_RE
             &thread_logger, "Aborting function: exports.create is NULL in '%s'.", loaded_path);
         shared_library_unload(module);
 
-        if (remove(loaded_path) != 0)
-        {
-            POUND_LOG_WARN(&thread_logger, "Failed to remove '%s'.", loaded_path);
-        }
+        remove_loaded_copy(loaded_path, is_copy);
         return false;
     }
 
@@ -201,10 +228,7 @@ gui_plugin_load_module(gui_plugin_t *POUND_RESTRICT plugin, const char *POUND_RE
             &thread_logger, "Aborting function: exports.destroy is NULL in '%s'.", loaded_path);
         shared_library_unload(module);
 
-        if (remove(loaded_path) != 0)
-        {
-            POUND_LOG_WARN(&thread_logger, "Failed to remove '%s'.", loaded_path);
-        }
+        remove_loaded_copy(loaded_path, is_copy);
 
         return false;
     }
@@ -216,10 +240,7 @@ gui_plugin_load_module(gui_plugin_t *POUND_RESTRICT plugin, const char *POUND_RE
                         loaded_path);
         shared_library_unload(module);
 
-        if (remove(loaded_path) != 0)
-        {
-            POUND_LOG_WARN(&thread_logger, "Failed to remove '%s'.", loaded_path);
-        }
+        remove_loaded_copy(loaded_path, is_copy);
 
         return false;
     }
@@ -230,10 +251,7 @@ gui_plugin_load_module(gui_plugin_t *POUND_RESTRICT plugin, const char *POUND_RE
             &thread_logger, "Aborting function: exports.save is NULL in '%s'.", loaded_path);
         shared_library_unload(module);
 
-        if (remove(loaded_path) != 0)
-        {
-            POUND_LOG_WARN(&thread_logger, "Failed to remove '%s'.", loaded_path);
-        }
+        remove_loaded_copy(loaded_path, is_copy);
 
         return false;
     }
@@ -248,10 +266,7 @@ gui_plugin_load_module(gui_plugin_t *POUND_RESTRICT plugin, const char *POUND_RE
                         loaded_path);
         shared_library_unload(module);
 
-        if (remove(loaded_path) != 0)
-        {
-            POUND_LOG_WARN(&thread_logger, "Failed to remove '%s'.", loaded_path);
-        }
+        remove_loaded_copy(loaded_path, is_copy);
 
         memset(plugin, 0, sizeof(*plugin));
         return false;
@@ -662,6 +677,25 @@ shared_library_get_symbol(void *module, const char *name, void **out)
     return true;
 }
 
+static void
+remove_loaded_copy(const char *path, const bool is_copy)
+{
+    if (false == is_copy)
+    {
+        return;
+    }
+
+    if (NULL == path)
+    {
+        return;
+    }
+
+    if (remove(path) != 0)
+    {
+        POUND_LOG_WARN(&thread_logger, "Failed to remove hot-reload copy '%s'.", path);
+    }
+}
+
 static bool
 shared_library_create_loaded_path(const char    *source,
                                   char          *destination,
@@ -742,11 +776,12 @@ shared_library_create_loaded_path(const char    *source,
             return false;
         }
 
-        written = snprintf(destination, capacity, "%.*s.hot_%u%s", stem_length, source, id, dot);
+        written = snprintf(
+            destination, capacity, "%.*s.hot_%u_%u%s", stem_length, source, hot_process_id(), id, dot);
     }
     else
     {
-        written = snprintf(destination, capacity, "%s.hot_%u", source, id);
+        written = snprintf(destination, capacity, "%s.hot_%u_%u", source, hot_process_id(), id);
     }
 
     if (written < 0)

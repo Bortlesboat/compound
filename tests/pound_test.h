@@ -1,12 +1,12 @@
 //! Minimal, dependency-free unit-test harness.
 //!
-//! Pound vendors no test framework, so rather than add one this header
+//! Compound vendors no test framework, so rather than add one this header
 //! provides just enough to register cases, assert, and report. It is
 //! deliberately allocation-free: the suite must stay runnable under ASan and
 //! inside a cross-compiled QEMU sandbox without pulling in a dependency that
 //! has not itself been cross-compiled.
 //!
-//! The harness also installs a capturing logger. Several Pound APIs are
+//! The harness also installs a capturing logger. Several Compound APIs are
 //! contractually required to report failure through both a return value *and*
 //! a log record; the capture lets a test assert both halves of that contract
 //! rather than trusting the return value alone.

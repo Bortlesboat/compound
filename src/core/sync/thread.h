@@ -12,8 +12,8 @@
 //!
 //! # Why this exists rather than C11 threads
 //!
-//! `PoundCore` deliberately depends on nothing but mimalloc, for the same reason
-//! `mutex` exists: SDL's wrappers are not available to `PoundCore`, and `<threads.h>`
+//! `CompoundCore` deliberately depends on nothing but mimalloc, for the same reason
+//! `mutex` exists: SDL's wrappers are not available to `CompoundCore`, and `<threads.h>`
 //! would leave clang-cl without an implementation. So this maps onto the two thread
 //! primitives every supported target already ships -- `CreateThread` on Windows and
 //! `pthread_create` on POSIX -- and the type is opaque so no platform header leaks
@@ -23,7 +23,7 @@
 //!
 //! There is no "detach" here, and that is deliberate. A detached thread that is still
 //! running when the cache, the CPU state or the engine is destroyed is a use-after-free
-//! that nothing in Pound could detect: the store happens on a stack frame nobody
+//! that nothing in Compound could detect: the store happens on a stack frame nobody
 //! owns any more. `thread_join` is therefore the only exit, so that a caller cannot
 //! lose track of a thread that is still inside guest code.
 

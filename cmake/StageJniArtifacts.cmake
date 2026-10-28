@@ -47,7 +47,7 @@ get_filename_component(source_name "${POUND_STAGE_SOURCE}" NAME)
 
 file(COPY "${POUND_STAGE_SOURCE}" DESTINATION "${staging}")
 
-message(STATUS "[Pound] Staged ${POUND_STAGE_ABI}/${source_name}")
+message(STATUS "[Compound] Staged ${POUND_STAGE_ABI}/${source_name}")
 
 # Collect any sibling shared libraries so a statically linked dependency that
 # still produced a .so (for example a future ARM64 LuaJIT build) travels with
@@ -59,9 +59,9 @@ file(GLOB sibling_libs "${source_dir}/*.so" "${source_dir}/*.dylib")
 foreach (lib IN LISTS sibling_libs)
     get_filename_component(lib_name "${lib}" NAME)
     file(COPY "${lib}" DESTINATION "${staging}")
-    message(STATUS "[Pound] Staged ${POUND_STAGE_ABI}/${lib_name}")
+    message(STATUS "[Compound] Staged ${POUND_STAGE_ABI}/${lib_name}")
 endforeach ()
 
 if (NOT sibling_libs)
-    message(STATUS "[Pound] No additional shared libraries to stage.")
+    message(STATUS "[Compound] No additional shared libraries to stage.")
 endif ()

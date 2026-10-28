@@ -391,7 +391,7 @@ static void pound_config_trim(char *POUND_RESTRICT text)
 ///
 /// Returns false for an unknown key or a value the setter refused. An unknown key
 /// is not an error the loader aborts on: it is how a config written by a newer
-/// Pound loads under an older one without losing the lines the newer one added.
+/// Compound loads under an older one without losing the lines the newer one added.
 static bool pound_config_apply(pound_config_t *POUND_RESTRICT config,
                                const char *POUND_RESTRICT    key,
                                const char *POUND_RESTRICT    value)
@@ -474,7 +474,7 @@ static bool pound_config_apply(pound_config_t *POUND_RESTRICT config,
     }
 
     POUND_LOG_WARN(&thread_logger,
-                   "Keeping unknown setting '%s'. It may belong to a newer Pound.",
+                   "Keeping unknown setting '%s'. It may belong to a newer Compound.",
                    key);
     return false;
 }
@@ -698,7 +698,7 @@ pound_config_save(const pound_config_t *POUND_RESTRICT config, const char *POUND
     }
 
     int written = fprintf(file,
-                          "# Pound settings. Written by the Settings page; safe to edit.\n"
+                          "# Compound settings. Written by the Settings page; safe to edit.\n"
                           "# jit_cache_bytes is clamped between %llu and %llu.\n"
                           "jit_cache_bytes = %zu\n"
                           "key_file = %s\n"

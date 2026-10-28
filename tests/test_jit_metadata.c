@@ -1,6 +1,6 @@
 //! Tests for the JIT metadata manager.
 //!
-//! The manager is the one part of Pound whose correctness is a *concurrency*
+//! The manager is the one part of Compound whose correctness is a *concurrency*
 //! argument rather than a computation, so most of these cases are not "does this
 //! return the right index" -- they are "does this leave the table in a state a
 //! second thread could still navigate".
