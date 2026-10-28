@@ -74,10 +74,18 @@ typedef struct
     /// True when `settings_status` describes a failure.
     bool settings_status_is_error;
 
-    /// Explicit padding. The level, the flag and the 192-byte status message leave
-    /// the struct two bytes short of a four-byte multiple; two bytes of tail bring
-    /// it there without an implicit pad.
-    char pad[2];
+    /// The outcome of the most recent Library action: a game or key file was
+    /// chosen, loaded, or refused. Shown under the button that caused it, because
+    /// the loader's own records are above the default log level.
+    char library_status[192];
+
+    /// True when `library_status` describes a failure.
+    bool library_status_is_error;
+
+    /// Explicit padding. The level, the flags and the two 192-byte status
+    /// messages leave the struct three bytes short of a four-byte multiple;
+    /// three bytes of tail bring it there without an implicit pad.
+    char pad[3];
 } pound_pages_view_t;
 
 /// How many log records the Logs page copies into its scratch buffer.
