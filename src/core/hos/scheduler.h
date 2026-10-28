@@ -2,7 +2,7 @@
 //!
 //! `hos/kernel.h` owns threads as objects -- their register files, priorities and
 //! lifecycle -- but never decides which one runs. This module is that decision, and the
-//! only thing in Pound that knows the clock.
+//! only thing in Compound that knows the clock.
 //!
 //! # The model
 //!
@@ -79,7 +79,7 @@
 /// One quantum is one call into the caller's run function, so this is really a decision
 /// about how much scheduling overhead to amortise: a small quantum interleaves threads
 /// closely and pays for a register-file copy each time, a large one does the opposite.
-/// Ten thousand instructions is a few micro-seconds of guest code on any host Pound runs
+/// Ten thousand instructions is a few micro-seconds of guest code on any host Compound runs
 /// on, which is close to the coarseness a title can observe.
 #define HOS_SCHEDULER_DEFAULT_QUANTUM 10000U
 

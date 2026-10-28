@@ -93,7 +93,7 @@ ctest  --preset debug
 sudo apt-get install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu qemu-user
 cmake --preset linux-aarch64-debug
 cmake --build --preset linux-aarch64-debug --parallel
-file build/linux-aarch64-debug/bin/linux/Pound     # expect: ARM aarch64
+file build/linux-aarch64-debug/bin/linux/Compound     # expect: ARM aarch64
 ctest --preset linux-aarch64-debug
 
 # Windows (from a shell with the MSVC environment active)
@@ -164,8 +164,8 @@ package, so each one is checked:
 
 | Platform | Check |
 | --- | --- |
-| Linux | `ldd` reports no `not found`; `Pound` exists in the staged tree. |
-| Windows | `Pound.exe` and `libPoundGui.dll` both present; every other `*.dll` copied alongside. |
+| Linux | `ldd` reports no `not found`; `Compound` exists in the staged tree. |
+| Windows | `Compound.exe` and `libCompoundGui.dll` both present; every other `*.dll` copied alongside. |
 | macOS | `codesign --verify --deep --strict` after ad-hoc signing; `otool -L` printed. |
 
 macOS ad-hoc signing is not cosmetic: unsigned arm64 binaries are killed by the

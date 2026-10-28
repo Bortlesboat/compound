@@ -127,7 +127,7 @@
 ///
 /// A cap rather than a doubling forever: every thread carries a full register file, so
 /// an unbounded thread table is an unbounded allocation driven by guest requests. A
-/// title that wants more than this is not one Pound can serve, and saying so beats
+/// title that wants more than this is not one Compound can serve, and saying so beats
 /// exhausting host memory.
 #define HOS_MAX_THREADS 1024U
 

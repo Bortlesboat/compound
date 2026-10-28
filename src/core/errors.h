@@ -58,7 +58,7 @@ typedef enum
 
     // Container / Loader Errors
 
-    /// The file did not match any container format Pound recognises.
+    /// The file did not match any container format Compound recognises.
     POUND_ERROR_UNSUPPORTED_FORMAT,
 
     /// A container was recognised and parsed, but a required key was absent from
@@ -121,8 +121,8 @@ typedef enum
     /// the decoder does not know -- a fact about the CPU. This reports a well-formed
     /// `svc` whose number, or whose behaviour, the OS layer has not implemented:
     /// `svcSendSyncRequest` is a perfectly valid instruction, and refusing it is a
-    /// statement about Pound rather than about the guest. It is never a guest-visible
-    /// `Result`, because there is no honest `Result` for "Pound has not written this
+    /// statement about Compound rather than about the guest. It is never a guest-visible
+    /// `Result`, because there is no honest `Result` for "Compound has not written this
     /// yet" and fabricating one would make the emulator look like firmware that
     /// answered.
     POUND_ERROR_UNSUPPORTED_SYSCALL,

@@ -27,12 +27,12 @@ pound_page_render_about(const pound_page_context_t *POUND_RESTRICT context)
 
     pound_page_heading(context,
                        "ABOUT",
-                       "Pound",
+                       "Compound",
                        "An experimental Nintendo Switch emulator, written in C.");
 
     if (pound_page_begin_card(context, "##about_versions", 0.0F))
     {
-        pound_page_labeled_value(context, "Pound", POUND_VERSION, 0.35F);
+        pound_page_labeled_value(context, "Compound", POUND_VERSION, 0.35F);
 
         const char *const imgui_version = igGetVersion();
         pound_page_labeled_value(context,
@@ -66,7 +66,7 @@ pound_page_render_about(const pound_page_context_t *POUND_RESTRICT context)
         "being written, so a game image can be listed but not decrypted or executed.");
     igTextWrapped(
         "Render anything. The graphics processor in this hardware exposes no documented instruction "
-        "set, so no renderer for it can be written from public information; Pound does not claim "
+        "set, so no renderer for it can be written from public information; Compound does not claim "
         "one.");
     pound_fonts_pop(body_font_pushed);
     igPopStyleColor(1);
@@ -76,7 +76,7 @@ pound_page_render_about(const pound_page_context_t *POUND_RESTRICT context)
     igPushStyleColor_Vec4(
         ImGuiCol_Text, pound_theme_imgui_color(context->theme, POUND_THEME_TEXT_SECONDARY));
     const bool keys_font_pushed = pound_fonts_push(context->fonts, POUND_FONT_ROLE_SMALL);
-    igTextWrapped("Pound contains no Nintendo keys and never will. Reading an encrypted title "
+    igTextWrapped("Compound contains no Nintendo keys and never will. Reading an encrypted title "
                   "requires a keys file you provide yourself, exactly as other Switch emulators "
                   "require.");
     pound_fonts_pop(keys_font_pushed);

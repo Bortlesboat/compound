@@ -1,6 +1,6 @@
 //! Tests for the W^X code cache.
 //!
-//! The cache is the only place in Pound that can hand out memory which is
+//! The cache is the only place in Compound that can hand out memory which is
 //! executable, so the suite tests the properties that make that safe rather than
 //! only the arithmetic. Three of them are load-bearing:
 //!
@@ -207,7 +207,7 @@ unopened_cache(void)
 // The signature is `uint64_t f(void)` so the encoding is a bare constant return and
 // does not depend on the host ABI: whether the first argument arrives in `rdi` or
 // `rcx` is irrelevant to code that reads no argument, which means one encoding is
-// correct on every platform Pound builds and the test does not need a per-ABI
+// correct on every platform Compound builds and the test does not need a per-ABI
 // variant. The value is kept under 2^16 so a single `mov` covers it on both
 // architectures.
 

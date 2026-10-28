@@ -37,7 +37,7 @@ POUND_THREAD_LOCAL memory_bucket_type_t tls_current_bucket_index = MEMORY_BUCKET
 
 /// Credits `bytes` to `bucket` and to the running total.
 ///
-/// The counters are plain `size_t`s. Pound only mutates them from the thread
+/// The counters are plain `size_t`s. Compound only mutates them from the thread
 /// that owns the current bucket, so no synchronisation is required for the
 /// single-threaded accounting model documented in `memory.h`.
 static void

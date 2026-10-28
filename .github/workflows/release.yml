@@ -4,9 +4,9 @@ name: Release
 # Tag-triggered distribution packages.
 #
 # Produces, from one `v*` tag:
-#   Windows  zip  : Pound.exe + libPoundGui.dll + imgui.dll + SDL3.dll + mimalloc.dll + lua51.dll
-#   Linux    tgz  : Pound + libPoundGui.so + libimgui.so + libmimalloc.so + libluajit.so
-#   macOS    tgz  : Pound + libPoundGui.dylib + libimgui.dylib + libmimalloc.dylib
+#   Windows  zip  : Compound.exe + libCompoundGui.dll + imgui.dll + SDL3.dll + mimalloc.dll + lua51.dll
+#   Linux    tgz  : Compound + libCompoundGui.so + libimgui.so + libmimalloc.so + libluajit.so
+#   macOS    tgz  : Compound + libCompoundGui.dylib + libimgui.dylib + libmimalloc.dylib
 #
 # Every artefact is verified to contain its emulator image before upload: an
 # archive that ships without it is worse than no archive at all.
@@ -96,14 +96,14 @@ jobs:
 
           # Only the runtime image ships: headers, static archives and CMake
           # export files are build inputs, not part of a runnable tree.
-          cp -p build/${{ matrix.config }}/bin/linux/Pound          "${stage}/bin/Pound"
-          cp -p build/${{ matrix.config }}/bin/linux/libPoundGui.so "${stage}/bin/libPoundGui.so"
+          cp -p build/${{ matrix.config }}/bin/linux/Compound          "${stage}/bin/Compound"
+          cp -p build/${{ matrix.config }}/bin/linux/libCompoundGui.so "${stage}/bin/libCompoundGui.so"
 
           for so in build/${{ matrix.config }}/bin/linux/*.so; do
             [ -e "$so" ] || continue
             name="$(basename "$so")"
             case "$name" in
-              libPoundGui.so) continue ;;
+              libCompoundGui.so) continue ;;
             esac
             cp -p "$so" "${stage}/lib/${name}"
           done
@@ -113,13 +113,13 @@ jobs:
 
           # A package whose emulator image cannot resolve its own libraries
           # extracts cleanly and then fails on first launch.
-          if ldd "${stage}/bin/Pound" | grep -q 'not found'; then
+          if ldd "${stage}/bin/Compound" | grep -q 'not found'; then
             echo "::error::Unresolved shared library in the packaged Linux image:"
-            ldd "${stage}/bin/Pound"
+            ldd "${stage}/bin/Compound"
             exit 1
           fi
 
-          if [ ! -f "${stage}/bin/Pound" ]; then
+          if [ ! -f "${stage}/bin/Compound" ]; then
             echo "::error::The packaged tree has no emulator image."
             exit 1
           fi
@@ -183,7 +183,7 @@ jobs:
 
           # A missing DLL here is the classic Wayland/Windows packaging failure:
           # the archive extracts fine and then refuses to start.
-          $required = @('Pound.exe', 'libPoundGui.dll')
+          $required = @('Compound.exe', 'libCompoundGui.dll')
           foreach ($name in $required) {
             $path = Join-Path $binOut $name
             if (-not (Test-Path $path)) {
@@ -250,14 +250,14 @@ jobs:
 
           mkdir -p "${stage}/bin" "${stage}/lib"
 
-          cp -p build/${{ matrix.config }}/bin/mac/Pound            "${stage}/bin/Pound"
-          cp -p build/${{ matrix.config }}/bin/mac/libPoundGui.dylib "${stage}/bin/libPoundGui.dylib"
+          cp -p build/${{ matrix.config }}/bin/mac/Compound            "${stage}/bin/Compound"
+          cp -p build/${{ matrix.config }}/bin/mac/libCompoundGui.dylib "${stage}/bin/libCompoundGui.dylib"
 
           for dylib in build/${{ matrix.config }}/bin/mac/*.dylib; do
             [ -e "$dylib" ] || continue
             name="$(basename "$dylib")"
             case "$name" in
-              libPoundGui.dylib) continue ;;
+              libCompoundGui.dylib) continue ;;
             esac
             cp -p "$dylib" "${stage}/lib/${name}"
           done
@@ -265,14 +265,14 @@ jobs:
           # macOS refuses unsigned arm64 binaries unless they are at least
           # ad-hoc signed, which is the difference between an artefact that
           # launches and one the kernel kills on first exec.
-          find "$payload" -type f \( -name '*.dylib' -o -name Pound \) \
+          find "$payload" -type f \( -name '*.dylib' -o -name Compound \) \
             -exec codesign --force --sign - {} \;
 
-          codesign --verify --deep --strict "${stage}/bin/Pound"
+          codesign --verify --deep --strict "${stage}/bin/Compound"
 
           # Catches a library left out of lib/ instead of leaving it to fail at
           # dyld time on the user's machine.
-          otool -L "${stage}/bin/Pound"
+          otool -L "${stage}/bin/Compound"
 
           cp -p LICENSE   "${stage}/LICENSE"
           cp -p README.md "${stage}/README.md"
@@ -328,7 +328,7 @@ jobs:
           if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
             gh release create "$VERSION" "${archives[@]}" \
               --repo "$GITHUB_REPOSITORY" \
-              --title "Pound $VERSION" \
+              --title "Compound $VERSION" \
               --generate-notes \
               --verify-tag
           else

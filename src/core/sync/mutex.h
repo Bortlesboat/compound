@@ -1,8 +1,8 @@
-//! Minimal recursive-free mutex abstraction for Pound core subsystems.
+//! Minimal recursive-free mutex abstraction for Compound core subsystems.
 //!
 //! The guest-facing allocators (pool, slab) and the JIT code cache are shared
 //! between the emulated CPU thread, GUI threads and the hot-reload path, so
-//! they need mutual exclusion. `PoundCore` deliberately depends on nothing but
+//! they need mutual exclusion. `CompoundCore` deliberately depends on nothing but
 //! mimalloc, so it cannot use SDL's mutex wrappers, and pulling `<threads.h>`
 //! would leave clang-cl without a C11 threads implementation.
 //!
@@ -15,7 +15,7 @@
 //! - POSIX: `pthread_mutex_t`, initialised as a default (non-recursive) mutex.
 //!
 //! The type is opaque in the header so that no platform header leaks into
-//! `PoundCore`'s consumers.
+//! `CompoundCore`'s consumers.
 
 #ifndef POUND_MUTEX_H
 #define POUND_MUTEX_H

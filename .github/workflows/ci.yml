@@ -139,8 +139,8 @@ jobs:
           set -euo pipefail
           # file(1) catches a silently-native build, which would make the QEMU
           # test step pass without ever exercising the ARM64 code path.
-          file build/linux-aarch64-debug/bin/linux/Pound
-          file build/linux-aarch64-debug/bin/linux/Pound | grep -q 'ARM aarch64'
+          file build/linux-aarch64-debug/bin/linux/Compound
+          file build/linux-aarch64-debug/bin/linux/Compound | grep -q 'ARM aarch64'
 
       - name: Test under QEMU
         run: ctest --preset linux-aarch64-debug

@@ -3,7 +3,7 @@
 
 /// Font management.
 ///
-/// Pound had none of this before: the SDL3 backend's built-in loader left the
+/// Compound had none of this before: the SDL3 backend's built-in loader left the
 /// atlas holding ImGui's embedded Proggy at a fixed 13px, which is legible on a
 /// 1080p desktop monitor and unreadable on a 4K one or a phone. This is the
 /// smallest thing that makes type readable everywhere without shipping a

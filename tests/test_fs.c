@@ -444,7 +444,7 @@ POUND_TEST(keys, a_missing_key_is_reported_and_nothing_is_written)
 
 POUND_TEST(keys, a_fresh_store_contains_no_keys_at_all)
 {
-    // The architectural guarantee, stated as a test: Pound ships no keys. Every name the
+    // The architectural guarantee, stated as a test: Compound ships no keys. Every name the
     // loader will ask for is absent from an empty store, so there is no code path -- and
     // no table, and no default -- that can quietly supply one. If a key were ever
     // compiled in, this test would stop passing, which is the point of writing it.
@@ -470,7 +470,7 @@ POUND_TEST(keys, a_fresh_store_contains_no_keys_at_all)
     for (size_t i = 0U; i < (sizeof(WELL_KNOWN) / sizeof(WELL_KNOWN[0])); ++i)
     {
         POUND_CHECK_MSG(!key_store_has(&store, WELL_KNOWN[i]),
-                        "the key '%s' is present in an empty store, so Pound is shipping a key.",
+                        "the key '%s' is present in an empty store, so Compound is shipping a key.",
                         WELL_KNOWN[i]);
 
         POUND_CHECK_MSG(POUND_ERROR_KEY_MISSING == key_store_get(&store, WELL_KNOWN[i], key),

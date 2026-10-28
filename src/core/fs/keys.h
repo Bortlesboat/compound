@@ -1,7 +1,7 @@
 #ifndef POUND_FS_KEYS_H
 #define POUND_FS_KEYS_H
 
-//! The key provider: the only place in Pound that is allowed to hold decryption key
+//! The key provider: the only place in Compound that is allowed to hold decryption key
 //! material, and it holds nothing until the user supplies it.
 //!
 //! ## Why this file exists and is shaped this way
@@ -22,7 +22,7 @@
 //!
 //! ## The file format
 //!
-//! Pound reads the same plain-text format the rest of the homebrew ecosystem uses, so a
+//! Compound reads the same plain-text format the rest of the homebrew ecosystem uses, so a
 //! user who already has a key file for another emulator does not have to convert it:
 //!
 //! ```text
@@ -49,7 +49,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/// Length of every key Pound uses. All of the Switch and Switch 2 keys are AES-128, so
+/// Length of every key Compound uses. All of the Switch and Switch 2 keys are AES-128, so
 /// a single fixed width is enough and avoids carrying a length around as a second
 /// source of truth that could disagree with the first.
 #define POUND_KEY_SIZE 16U
@@ -66,7 +66,7 @@
 /// byte, plus the terminating NUL.
 #define POUND_KEY_HEX_MAX (POUND_KEY_SIZE * 2U)
 
-// --- Names of the keys Pound itself asks for by name -----------------------------
+// --- Names of the keys Compound itself asks for by name -----------------------------
 //
 // Defined here so a caller cannot typo a string literal and silently get a lookup that
 // is always missing, which would surface much later as an unrelated decryption failure.
@@ -124,9 +124,9 @@ void key_store_init(key_store_t *POUND_RESTRICT store);
 /// Releases `store`'s array and returns it to the empty state.
 ///
 /// Safe on a zeroed struct and safe to call twice. Does not clear the key bytes before
-/// releasing them: the array is handed back to the allocator, which is outside Pound's
+/// releasing them: the array is handed back to the allocator, which is outside Compound's
 /// control, so a zeroing pass would be security theatre. A caller that genuinely needs
-/// the memory gone -- and nothing in Pound does -- should let the store be destroyed
+/// the memory gone -- and nothing in Compound does -- should let the store be destroyed
 /// at exit and rely on the OS reclaiming it.
 void key_store_destroy(key_store_t *POUND_RESTRICT store);
 

@@ -68,7 +68,7 @@
 #define GUI_TITLE_MIN_FRACTION 0.05F
 #define GUI_TITLE_MAX_FRACTION 0.16F
 
-/// Identifies a saved-state blob as Pound's.
+/// Identifies a saved-state blob as Compound's.
 #define GUI_SAVED_STATE_MAGIC 0x504E4455U
 
 /// Bumped whenever the saved fields change meaning.
@@ -227,7 +227,7 @@ gui_plugin_error_to_string(const gui_plugin_error_t error)
     return "UNKNOWN ERROR";
 }
 
-/// Names the settings file beside the rest of the user's Pound data.
+/// Names the settings file beside the rest of the user's Compound data.
 ///
 /// SDL owns the platform rules -- `%APPDATA%` on Windows, XDG on Linux, the app
 /// container on a phone -- so this asks it rather than reconstructing them. A
@@ -238,7 +238,7 @@ gui_resolve_settings_path(gui_state_t *POUND_RESTRICT state)
 {
     state->settings_path[0] = '\0';
 
-    char *const preference_path = SDL_GetPrefPath("Pound", "Pound");
+    char *const preference_path = SDL_GetPrefPath("Compound", "Compound");
 
     if (NULL == preference_path)
     {
@@ -573,7 +573,7 @@ gui_render_sidebar(gui_state_t *POUND_RESTRICT                  state,
         const bool wordmark_pushed = pound_fonts_push(&state->fonts, POUND_FONT_ROLE_TITLE);
         igPushStyleColor_Vec4(ImGuiCol_Text,
                               pound_theme_imgui_color(&state->theme, POUND_THEME_ACCENT));
-        igTextUnformatted("Pound", NULL);
+        igTextUnformatted("Compound", NULL);
         igPopStyleColor(1);
         pound_fonts_pop(wordmark_pushed);
 
@@ -761,20 +761,17 @@ gui_render_debug_windows(gui_state_t *POUND_RESTRICT state)
     {
         if (igBegin("Debug##debug_menu", &state->show_debug_menu, ImGuiWindowFlags_None))
         {
-            if (igBeginChild_Str("##debug_memory",
-                                 (ImVec2){ 0.0F, 240.0F },
-                                 ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding,
-                                 ImGuiWindowFlags_None))
-            {
-                debug_memory_render(&state->memory_tracker);
-            }
-            igEndChild();
-
             igSeparatorText("Interface");
             igCheckbox("Hot reload guide", &state->show_hot_reload_guide);
             igCheckbox("Dear ImGui demo", &state->show_imgui_demo);
         }
         igEnd();
+
+        // The address-space view is its own top-level window: ImGui does not
+        // support `Begin` inside a child window, and nesting it there left it
+        // clipped to a sliver. It also gets an explicit size and position so
+        // it opens expanded on the left instead of collapsed to its content.
+        debug_memory_render(&state->memory_tracker);
     }
 
     if (true == state->show_hot_reload_guide)
@@ -784,7 +781,7 @@ gui_render_debug_windows(gui_state_t *POUND_RESTRICT state)
         if (igBegin("Hot Reloading Guide", &state->show_hot_reload_guide, window_flags))
         {
             igTextWrapped("This build loads its interface from a shared library. Rebuild the "
-                          "'PoundGui' target and Pound swaps the new code in without restarting.");
+                          "'CompoundGui' target and Compound swaps the new code in without restarting.");
             igSpacing();
             igTextWrapped("Press F5 at any time to reload by hand.");
         }

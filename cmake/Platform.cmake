@@ -1,7 +1,7 @@
 include_guard(GLOBAL)
 
 # -----------------------------------------------------------------------------
-# Pound target detection
+# Compound target detection
 # -----------------------------------------------------------------------------
 #
 # Resolves a coarse platform id (`windows`, `mac`, `linux`, `android`) plus a
@@ -22,8 +22,8 @@ function(pound_detect_platform out_platform out_android out_posix)
         set(platform "linux")
     else ()
         message(FATAL_ERROR
-                "[Pound] Unsupported target system '${CMAKE_SYSTEM_NAME}'. "
-                "Pound supports Windows, macOS, Linux and Android.")
+                "[Compound] Unsupported target system '${CMAKE_SYSTEM_NAME}'. "
+                "Compound supports Windows, macOS, Linux and Android.")
     endif ()
 
     if (platform STREQUAL "windows")
@@ -52,8 +52,8 @@ function(pound_detect_architecture out_arch)
         set(arch "x86_64")
     else ()
         message(FATAL_ERROR
-                "[Pound] Unsupported target processor '${CMAKE_SYSTEM_PROCESSOR}'. "
-                "Pound requires 64-bit ARM or 64-bit x86.")
+                "[Compound] Unsupported target processor '${CMAKE_SYSTEM_PROCESSOR}'. "
+                "Compound requires 64-bit ARM or 64-bit x86.")
     endif ()
 
     set(${out_arch} "${arch}" PARENT_SCOPE)
@@ -68,16 +68,16 @@ endfunction()
 # Linux and Android), and this project needs no global normalisation.
 #
 # In particular, do NOT set CMAKE_SHARED_LIBRARY_PREFIX to "lib" here. Only
-# Pound's own plugin carries that prefix -- SDL3's Windows DLL must stay
+# Compound's own plugin carries that prefix -- SDL3's Windows DLL must stay
 # `SDL3.dll`, because SDL3's own CMake exports the runtime loader against that
 # name. A global override would silently rename it to `libSDL3.dll` and the
 # failure would only appear at startup on a user's machine.
 #
-# The prefix is therefore applied per target; see the PoundGui block in the
+# The prefix is therefore applied per target; see the CompoundGui block in the
 # top-level CMakeLists.txt.
 
 function(pound_set_shared_library_defaults)
-    message(STATUS "[Pound] Shared library naming uses CMake defaults; PoundGui prefixes itself.")
+    message(STATUS "[Compound] Shared library naming uses CMake defaults; CompoundGui prefixes itself.")
 endfunction()
 
 # -----------------------------------------------------------------------------
@@ -97,7 +97,7 @@ function(pound_collect_jni_artifacts binary_dir)
     set(abi "${POUND_ANDROID_ABI_DIR}")
 
     if (abi STREQUAL "")
-        message(FATAL_ERROR "[Pound] POUND_ANDROID_ABI_DIR must be set for Android builds.")
+        message(FATAL_ERROR "[Compound] POUND_ANDROID_ABI_DIR must be set for Android builds.")
     endif ()
 
     set(staging "${binary_dir}/jniLibs/${abi}")
@@ -112,13 +112,13 @@ function(pound_collect_jni_artifacts binary_dir)
 
     foreach (lib IN LISTS runtime_libs)
         get_filename_component(lib_name "${lib}" NAME)
-        message(STATUS "[Pound] Packaging JNI artifact: ${abi}/${lib_name}")
+        message(STATUS "[Compound] Packaging JNI artifact: ${abi}/${lib_name}")
         file(COPY "${lib}" DESTINATION "${staging}")
     endforeach()
 
     # The emulator image itself (libmain.so) is staged after the link by
     # cmake/StageJniArtifacts.cmake; at configure time it does not exist yet.
-    message(STATUS "[Pound] JNI staging directory ready: ${staging}")
+    message(STATUS "[Compound] JNI staging directory ready: ${staging}")
 
     set(POUND_JNI_STAGING_DIR "${staging}" PARENT_SCOPE)
 endfunction()
@@ -139,13 +139,13 @@ function(pound_resolve_sanitizers)
 
     if (CMAKE_CROSSCOMPILING)
         message(STATUS
-                "[Pound] Dropping sanitizers: cross-compiling to ${CMAKE_SYSTEM_NAME}.")
+                "[Compound] Dropping sanitizers: cross-compiling to ${CMAKE_SYSTEM_NAME}.")
         set(POUND_SANITIZERS "" CACHE STRING "" FORCE)
         return()
     endif ()
 
     if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-        message(STATUS "[Pound] Dropping sanitizers: unsupported on Android.")
+        message(STATUS "[Compound] Dropping sanitizers: unsupported on Android.")
         set(POUND_SANITIZERS "" CACHE STRING "" FORCE)
         return()
     endif ()

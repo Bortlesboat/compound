@@ -195,7 +195,7 @@ static uint8_t SAMPLE_CONTENTS[SAMPLE_FILE_COUNT][512];
 
 /// The hashed region an XCI's HFS0 entries record.
 ///
-/// Not a value Pound acts on -- `hashed_size` belongs to whatever encloses the partition --
+/// Not a value Compound acts on -- `hashed_size` belongs to whatever encloses the partition --
 /// so it is only ever a fixed pattern the tests read back to prove the field was recorded
 /// rather than recomputed.
 #define SAMPLE_HASHED_SIZE 0x200ULL

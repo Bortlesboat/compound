@@ -61,7 +61,7 @@ extern "C"
 // Architecture
 // -----------------------------------------------------------------------------
 //
-// Ballistic emits host code for the machine it runs on and Pound targets
+// Ballistic emits host code for the machine it runs on and Compound targets
 // 64-bit ARM (Android devices, Apple Silicon, ARM servers) and 64-bit x86
 // (Windows, desktop Linux). 32-bit targets are rejected outright.
 
@@ -79,7 +79,7 @@ extern "C"
 
 #else
 
-#error "Pound requires a 64-bit ARM or x86 environment."
+#error "Compound requires a 64-bit ARM or x86 environment."
 
 #endif
 
