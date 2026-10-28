@@ -11,7 +11,7 @@ include_guard(GLOBAL)
 #
 # ARM note: no ARM64 artefacts are committed yet. `POUND_ENABLE_BALLISTIC`
 # therefore defaults to ON only where the artefacts actually exist, which lets
-# the ARM/Android and aarch64 CI lanes build and test the rest of Pound today
+# the ARM/Android and aarch64 CI lanes build and test the rest of Compound today
 # and pick the JIT up automatically once `extern/ballistic/android/arm64-v8a`
 # and `extern/ballistic/linux-arm64` are populated.
 #
@@ -205,7 +205,7 @@ if (POUND_ENABLE_BALLISTIC)
     # it -- and nothing in CMake puts it there on its own for an imported target reached
     # transitively through a static one.
     #
-    # That is not a hypothetical. `Pound.exe` and `PoundTests.exe` both linked, both
+    # That is not a hypothetical. `Compound.exe` and `CompoundTests.exe` both linked, both
     # reported a clean build, and both died at start-up with STATUS_DLL_NOT_FOUND
     # (0xC0000135) because `lua51.dll` was never staged. A test that links the engine is
     # what exposed it, because until now no build target did.

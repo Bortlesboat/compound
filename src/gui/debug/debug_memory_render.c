@@ -51,6 +51,11 @@ debug_memory_render(debug_memory_tracker_t *context)
 
     const ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoCollapse;
 
+    // Open at a readable size, on the left edge of the viewport, rather than
+    // letting ImGui shrink the window to its (tiny) content on first run.
+    igSetNextWindowPos((ImVec2){ 24.0F, 96.0F }, ImGuiCond_Appearing, (ImVec2){ 0.0F, 0.0F });
+    igSetNextWindowSize((ImVec2){ 620.0F, 360.0F }, ImGuiCond_Appearing);
+
     if (true == igBegin(title, NULL, window_flags))
     {
         ImDrawList *POUND_RESTRICT draw_list   = igGetWindowDrawList();

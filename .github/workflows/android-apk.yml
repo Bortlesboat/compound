@@ -111,7 +111,7 @@ jobs:
             -keyalg   RSA \
             -keysize  4096 \
             -validity 10000 \
-            -dname   "CN=Pound Emulator, OU=Development, O=Pound, L=Unknown, ST=Unknown, C=ZZ"
+            -dname   "CN=Compound Emulator, OU=Development, O=Compound, L=Unknown, ST=Unknown, C=ZZ"
 
           echo "POUND_KEYSTORE_PATH=${{ runner.temp }}/pound-release.jks" >> "$GITHUB_ENV"
           echo "POUND_KEYSTORE_PASSWORD=${POUND_KEYSTORE_PASSWORD}" >> "$GITHUB_ENV"

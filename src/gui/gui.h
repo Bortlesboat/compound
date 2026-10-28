@@ -7,7 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/// Longest file path Pound will construct or accept.
+/// Longest file path Compound will construct or accept.
 ///
 /// Deliberately *not* named `MAX_PATH`: on Windows that identifier belongs to
 /// the Win32 SDK (260) and redefining it is a hard compiler error.
@@ -18,15 +18,15 @@
 
 #if POUND_PLATFORM_WINDOWS
 
-#define GUI_PLUGIN_NAME "libPoundGui.dll"
+#define GUI_PLUGIN_NAME "libCompoundGui.dll"
 
 #elif POUND_PLATFORM_APPLE
 
-#define GUI_PLUGIN_NAME "libPoundGui.dylib"
+#define GUI_PLUGIN_NAME "libCompoundGui.dylib"
 
 #else
 
-#define GUI_PLUGIN_NAME "libPoundGui.so"
+#define GUI_PLUGIN_NAME "libCompoundGui.so"
 
 #endif // POUND_PLATFORM_WINDOWS
 

@@ -90,7 +90,7 @@ pound_test_fail(const char *file, const int line, const char *format, ...)
     vprintf(format, args);
     va_end(args);
 
-    // Every Pound entry point is required to report a failure through both a status
+    // Every Compound entry point is required to report a failure through both a status
     // and a log record, so the record captured last is usually the explanation for
     // what just failed. Printing it here means a failing case is diagnosable from the
     // run's output alone, rather than needing a second run with the capture hooked up
@@ -167,7 +167,7 @@ pound_test_run_all(const char *filter)
 //
 // Captures the fully rendered message text, not just a count, so that
 // `pound_test_log_contains` can assert a *specific* diagnostic was emitted
-// rather than merely that something was. Several Pound APIs are contractually
+// rather than merely that something was. Several Compound APIs are contractually
 // required to report failure through both a return value and a log record, and
 // this is what lets a test check both halves.
 

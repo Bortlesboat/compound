@@ -1,7 +1,7 @@
 //! Tests for the Ballistic allocator bridge.
 //!
 //! The code cache has its own suite; this one exists because the bridge is the only
-//! place where Pound meets a third party's idea of what an allocator is, and that
+//! place where Compound meets a third party's idea of what an allocator is, and that
 //! meeting is where the assumptions are most likely to be wrong. Every case here
 //! therefore drives the cache *through the `bal_allocator_t` Ballistic would hold*,
 //! rather than calling the cache directly, so the callbacks are exercised exactly as

@@ -1349,7 +1349,7 @@ jit_metadata_acquire(jit_metadata_t *POUND_RESTRICT manager,
     // past the lease increment, and the second must not be reordered before it, or
     // invalidation could observe zero leases, free the host code, and have this
     // thread go on to execute it. Acquire/release alone does not order two plain
-    // loads around a read-modify-write on every architecture Pound targets.
+    // loads around a read-modify-write on every architecture Compound targets.
     //
     // It is also why the cost is acceptable: this runs once per block entry, not once
     // per guest instruction, and `jit_metadata_find_ready` -- which runs on every

@@ -1,4 +1,4 @@
-# Contributing to Pound
+# Contributing to Compound
 
 This project holds a deliberately high bar for code quality. Every pull request
 is expected to be defensible line by line, and undocumented or silently-handled
@@ -21,7 +21,7 @@ it is much cheaper to avoid the round trips.
 
 ## Before you start
 
-Pound is early-stage. The guest CPU is not implemented, and the highest-value
+Compound is early-stage. The guest CPU is not implemented, and the highest-value
 contributions right now are to the [Ballistic](https://github.com/pound-emu/ballistic)
 ARM64 recompiler and to the core subsystems listed in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

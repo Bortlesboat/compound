@@ -1,6 +1,6 @@
 //! Horizon OS memory layout: regions, their rights, and the process heap.
 //!
-//! Guest memory in Pound is one flat host buffer (`guest_memory_t`) with no
+//! Guest memory in Compound is one flat host buffer (`guest_memory_t`) with no
 //! inherent structure: any address in the window translates to any byte.
 //! Horizon is the opposite. A process's address space is carved into regions
 //! whose *state* (`Free`, `Code`, `Normal`, `Stack`, ...) and *permission*
@@ -68,7 +68,7 @@
 /// The most regions one layout can describe.
 ///
 /// Horizon itself is bounded by a slab allocator for memory blocks, not by a
-/// fixed count; Pound's table has to be finite, so it is sized well past what a
+/// fixed count; Compound's table has to be finite, so it is sized well past what a
 /// real loader maps (code, rodata, data, bss, a couple of stacks, a few shared
 /// mappings) and the operations that would overflow it refuse rather than
 /// corrupt: `hos_memory_layout_map` returns an error, and `svcSetHeapSize`
@@ -123,7 +123,7 @@ typedef enum
     HOS_MEMORY_STATE_ALIAS_CODE_DATA = 0x1FFBD09U,
 
     /// Writable data, and what `svcSetHeapSize` commits a heap as. Pre-4.0.0
-    /// this was `0x1EBD05` / `0x3EBD05`; Pound uses the `+0x20000000` spelling.
+    /// this was `0x1EBD05` / `0x3EBD05`; Compound uses the `+0x20000000` spelling.
     HOS_MEMORY_STATE_NORMAL = 0x37EBD05U,
 } hos_memory_state_t;
 
@@ -139,13 +139,13 @@ typedef enum
 
 /// `MemoryAttribute` bit (`0x8`): the region is mapped uncached. It is the one
 /// attribute `svcSetMemoryAttribute` may set or clear, and the only one whose
-/// change the access gate has nothing to do with -- Pound's host memory has no
+/// change the access gate has nothing to do with -- Compound's host memory has no
 /// separate cached view, so the bit lives in the table and comes back out
 /// through `svcQueryMemory` exactly as it went in.
 #define HOS_MEMORY_ATTRIBUTE_UNCACHED 0x00000008U
 
 /// `MemoryAttribute` bit (`0x1`): the region is locked. `svcMapMemory` sets it on
-/// a source range, and it makes the region ineligible for reprotection. Pound
+/// a source range, and it makes the region ineligible for reprotection. Compound
 /// does not map aliases yet, so nothing sets this bit; it is named here because
 /// the reprotection check tests for it by name.
 #define HOS_MEMORY_ATTRIBUTE_LOCKED 0x00000001U

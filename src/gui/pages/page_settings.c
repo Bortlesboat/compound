@@ -72,7 +72,7 @@ pound_page_render_settings(const pound_page_context_t *POUND_RESTRICT context)
     pound_page_heading(context,
                        "SETTINGS",
                        "Settings",
-                       "Where Pound's files live, how it looks, and how much it says.");
+                       "Where Compound's files live, how it looks, and how much it says.");
 
     if (POUND_UNLIKELY(NULL == context->config))
     {
@@ -114,7 +114,7 @@ pound_page_render_settings(const pound_page_context_t *POUND_RESTRICT context)
         }
         else
         {
-            pound_settings_set_status(view, true, "That theme is not one Pound knows.");
+            pound_settings_set_status(view, true, "That theme is not one Compound knows.");
         }
     }
 
@@ -146,7 +146,7 @@ pound_page_render_settings(const pound_page_context_t *POUND_RESTRICT context)
             // The slider was moved outside the accepted range. The config keeps the
             // old value, and saying so avoids a control that snaps back for no
             // visible reason.
-            pound_settings_set_status(view, true, "That scale is outside the range Pound allows.");
+            pound_settings_set_status(view, true, "That scale is outside the range Compound allows.");
         }
     }
 
@@ -167,7 +167,7 @@ pound_page_render_settings(const pound_page_context_t *POUND_RESTRICT context)
 
         if (POUND_SUCCESS != status)
         {
-            pound_settings_set_status(view, true, "That log level is not one Pound knows.");
+            pound_settings_set_status(view, true, "That log level is not one Compound knows.");
         }
     }
 
@@ -177,7 +177,7 @@ pound_page_render_settings(const pound_page_context_t *POUND_RESTRICT context)
 
     pound_page_setting_label(context,
                              "JIT cache",
-                             "How much translated code Pound may hold. Larger keeps more titles warm; "
+                             "How much translated code Compound may hold. Larger keeps more titles warm; "
                              "smaller leaves more memory for the guest.");
 
     igSetNextItemWidth(240.0F);
@@ -194,7 +194,7 @@ pound_page_render_settings(const pound_page_context_t *POUND_RESTRICT context)
 
         if (POUND_SUCCESS != status)
         {
-            pound_settings_set_status(view, true, "That cache size is outside the range Pound allows.");
+            pound_settings_set_status(view, true, "That cache size is outside the range Compound allows.");
         }
     }
 
@@ -202,7 +202,7 @@ pound_page_render_settings(const pound_page_context_t *POUND_RESTRICT context)
 
     pound_page_setting_label(context,
                              "Key file",
-                             "Your dumped console keys. Pound ships none and reads this file only when "
+                             "Your dumped console keys. Compound ships none and reads this file only when "
                              "a title is opened.");
 
     // Typing is not itself an event worth reporting: the value is read when a title
@@ -231,7 +231,7 @@ pound_page_render_settings(const pound_page_context_t *POUND_RESTRICT context)
 
     pound_page_setting_label(context,
                              "Typeface",
-                             "An optional font file. Empty uses the system face Pound finds, or its "
+                             "An optional font file. Empty uses the system face Compound finds, or its "
                              "embedded one.");
 
     igInputText("##font_path",

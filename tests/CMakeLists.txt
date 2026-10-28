@@ -1,8 +1,8 @@
 # -----------------------------------------------------------------------------
-# Pound unit test suite
+# Compound unit test suite
 # -----------------------------------------------------------------------------
 #
-# The suite deliberately links only PoundCore. None of the code under test
+# The suite deliberately links only CompoundCore. None of the code under test
 # touches SDL or ImGui, and pulling them in would make the suite impossible to
 # run in the headless CI container or inside a cross-compiled QEMU sandbox,
 # which is where most of these regressions would otherwise first be seen.
@@ -13,7 +13,7 @@
 # aarch64 lanes.
 
 if (POUND_TARGET_IS_ANDROID)
-    message(STATUS "[PoundTests] Skipped: not runnable on Android.")
+    message(STATUS "[CompoundTests] Skipped: not runnable on Android.")
     return()
 endif ()
 
@@ -107,45 +107,45 @@ if (POUND_ENABLE_BALLISTIC)
     list(APPEND POUND_TEST_SUITES ballistic_engine)
 endif ()
 
-add_executable(PoundTests ${POUND_TEST_SOURCES})
+add_executable(CompoundTests ${POUND_TEST_SOURCES})
 
-# `PoundCore` exports `src/core` as a PUBLIC include directory, which makes
+# `CompoundCore` exports `src/core` as a PUBLIC include directory, which makes
 # "attributes.h" and "memory/memory.h" resolve but not the bare
 # "guest_memory.h"/"guest_state.h" that those headers themselves use internally.
 # Adding `src/core/memory` reproduces the header's own view of its siblings, so
 # a test can spell an include exactly the way the header under test spells it.
-target_include_directories(PoundTests PRIVATE
+target_include_directories(CompoundTests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/memory
 )
 
 if (POUND_ENABLE_BALLISTIC)
-    target_include_directories(PoundTests PRIVATE ${PROJECT_SOURCE_DIR}/extern/ballistic/include)
+    target_include_directories(CompoundTests PRIVATE ${PROJECT_SOURCE_DIR}/extern/ballistic/include)
 endif ()
 
-# The allocator is named explicitly rather than inherited. `PoundCore` is an
+# The allocator is named explicitly rather than inherited. `CompoundCore` is an
 # OBJECT library and therefore has no link step of its own, so its PRIVATE
 # mimalloc dependency does not reach consumers through
 # INTERFACE_LINK_LIBRARIES. Without this the test binary would fail to resolve
 # `mi_malloc_aligned`, `mi_malloc_usable_size`, `mi_free` and `mi_stats_get`.
-target_link_libraries(PoundTests PRIVATE PoundCore ${POUND_MIMALLOC_TARGET})
+target_link_libraries(CompoundTests PRIVATE CompoundCore ${POUND_MIMALLOC_TARGET})
 
 # The prebuilt engine and its LuaJIT runtime. Only reached when the suite above added
 # `test_ballistic_engine.c`, which is exactly when `Ballistic::Engine` carries the
 # artefacts rather than being the inert no-op. Linking it unconditionally would be
 # harmless on a lane that has it and impossible on one that does not.
 if (POUND_ENABLE_BALLISTIC)
-    target_link_libraries(PoundTests PRIVATE Ballistic::Engine)
+    target_link_libraries(CompoundTests PRIVATE Ballistic::Engine)
 endif ()
 
 # The LuaJIT runtime beside the test binary. This is not cosmetic: the suite below runs
 # the real engine, so without it the binary links cleanly and then dies at start-up with
 # STATUS_DLL_NOT_FOUND, which reads as a broken test rather than a missing file.
-ballistic_stage_runtime(PoundTests)
+ballistic_stage_runtime(CompoundTests)
 
-add_compiler_flags(PoundTests)
-add_linker_flags(PoundTests)
-add_sanitizers(PoundTests)
+add_compiler_flags(CompoundTests)
+add_linker_flags(CompoundTests)
+add_sanitizers(CompoundTests)
 
 # -----------------------------------------------------------------------------
 # CTest registration
@@ -155,14 +155,14 @@ add_sanitizers(PoundTests)
 # filter so `ctest -R guest_memory` narrows to a single area and a failure
 # names the area it came from.
 
-add_test(NAME PoundTests COMMAND PoundTests)
+add_test(NAME CompoundTests COMMAND CompoundTests)
 
 foreach (suite IN LISTS POUND_TEST_SUITES)
-    add_test(NAME PoundTests.${suite} COMMAND PoundTests ${suite})
-    set_tests_properties(PoundTests.${suite} PROPERTIES LABELS "${suite}")
+    add_test(NAME CompoundTests.${suite} COMMAND CompoundTests ${suite})
+    set_tests_properties(CompoundTests.${suite} PROPERTIES LABELS "${suite}")
 endforeach ()
 
-set_tests_properties(PoundTests PROPERTIES LABELS "all")
+set_tests_properties(CompoundTests PROPERTIES LABELS "all")
 
 # When cross-compiling, CTest launches the binary through
 # CMAKE_CROSSCOMPILING_EMULATOR (qemu-aarch64, set by the toolchain file).
@@ -171,7 +171,7 @@ set_tests_properties(PoundTests PROPERTIES LABELS "all")
 if (CMAKE_CROSSCOMPILING)
     if (NOT CMAKE_CROSSCOMPILING_EMULATOR)
         message(WARNING
-                "[PoundTests] Cross-compiling to ${CMAKE_SYSTEM_PROCESSOR} with no "
+                "[CompoundTests] Cross-compiling to ${CMAKE_SYSTEM_PROCESSOR} with no "
                 "CMAKE_CROSSCOMPILING_EMULATOR; registered tests cannot be executed.")
     endif ()
 endif ()
@@ -179,5 +179,5 @@ endif ()
 list(LENGTH POUND_TEST_SUITES POUND_TEST_SUITE_COUNT)
 math(EXPR POUND_TEST_ENTRY_COUNT "${POUND_TEST_SUITE_COUNT} + 1")
 message(STATUS
-        "[PoundTests] Registered ${POUND_TEST_ENTRY_COUNT} CTest entries covering "
-        "${POUND_TEST_SUITE_COUNT} suites: PoundTests plus one filtered entry per suite.")
+        "[CompoundTests] Registered ${POUND_TEST_ENTRY_COUNT} CTest entries covering "
+        "${POUND_TEST_SUITE_COUNT} suites: CompoundTests plus one filtered entry per suite.")

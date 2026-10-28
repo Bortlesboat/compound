@@ -38,9 +38,9 @@ find_program(POUND_QEMU_AARCH64 NAMES qemu-aarch64 qemu-aarch64-static)
 if (POUND_QEMU_AARCH64)
     set(CMAKE_CROSSCOMPILING_EMULATOR "${POUND_QEMU_AARCH64}" CACHE FILEPATH
             "Emulator used to run cross-compiled test binaries")
-    message(STATUS "[Pound] aarch64 test binaries will run under ${POUND_QEMU_AARCH64}.")
+    message(STATUS "[Compound] aarch64 test binaries will run under ${POUND_QEMU_AARCH64}.")
 else ()
     message(STATUS
-            "[Pound] qemu-aarch64 not found; cross-compiled test binaries will be "
+            "[Compound] qemu-aarch64 not found; cross-compiled test binaries will be "
             "built but not executed.")
 endif ()

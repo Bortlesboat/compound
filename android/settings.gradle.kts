@@ -1,4 +1,4 @@
-// Pound — Android build settings.
+// Compound — Android build settings.
 //
 // The native emulator image is produced by the top-level CMake project through
 // `cmake --preset android-arm64-release`, and CMake stages the result into
@@ -21,6 +21,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Pound"
+rootProject.name = "Compound"
 
 include(":app")

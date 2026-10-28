@@ -158,12 +158,12 @@ put_instruction(uint8_t *at, const uint32_t encoding)
 // installed. Left `NULL`, a guest that does not run and a bridge that is misconfigured
 // look identical from the outside: `BAL_SUCCESS`, no registers changed, no clue.
 //
-// So the logger is wired into Pound's. That is not only a debugging aid -- the emulator
+// So the logger is wired into Compound's. That is not only a debugging aid -- the emulator
 // will want the same thing, and an engine error message with the file, line and
 // function it came from is the difference between "the JIT did not run" and "the JIT
 // declined to translate this instruction".
 
-/// Renders one engine message into Pound's logger, keeping the engine's severity.
+/// Renders one engine message into Compound's logger, keeping the engine's severity.
 ///
 /// The message is formatted first and passed as an argument rather than spliced into a
 /// format string: `format` is the engine's, and handing it to a logger that will apply
@@ -243,7 +243,7 @@ engine_log(void *user_data, bal_log_data_t *data, const char *format, va_list ar
     }
 }
 
-/// Fills in a logger that routes to Pound's, at the given verbosity.
+/// Fills in a logger that routes to Compound's, at the given verbosity.
 static void
 engine_logger_init(bal_logger_t *logger, const bal_log_level_t min_level)
 {
@@ -299,7 +299,7 @@ typedef struct
 /// `the_flat_interface_resolves_a_guest_address_to_the_byte_it_names` is what pins that
 /// down rather than leaving it as a suspicion.
 ///
-/// The second reason is that Pound needs this callback to be its own regardless. A
+/// The second reason is that Compound needs this callback to be its own regardless. A
 /// title's address space is not one flat buffer: it is assembled from NCA segments, a
 /// zero-initialised .bss, a stack and a TLS block, each with its own permissions and its
 /// own size. `jit_cache` binds an allocator of its own for exactly the same reason, and
@@ -1159,7 +1159,7 @@ is_fetch_failure(const bal_error_t status)
 /// headers describe. The two cannot be told apart from outside, and it does not matter
 /// here: the prebuilt is read-only third-party and no Ballistic source is vendored, so
 /// neither is fixable in this repository. What is fixable -- and is now this project's own
-/// translation callback -- is everything on Pound's side of the boundary, which is why
+/// translation callback -- is everything on Compound's side of the boundary, which is why
 /// `translate_window` exists rather than `bal_flat_translation_interface_init`.
 POUND_TEST(ballistic_engine, the_prebuilt_fetches_no_guest_code_through_the_translation_interface)
 {
@@ -1188,7 +1188,7 @@ POUND_TEST(ballistic_engine, the_prebuilt_fetches_no_guest_code_through_the_tran
 
     POUND_REQUIRE_MSG(NULL != at_pc,
                       "The bridge's own translation callback cannot resolve guest 0x%llx, so "
-                      "the case below would be blaming the engine for Pound's bug.",
+                      "the case below would be blaming the engine for Compound's bug.",
                       (unsigned long long)ENGINE_GUEST_BASE);
 
     POUND_REQUIRE_MSG(4U <= readable,

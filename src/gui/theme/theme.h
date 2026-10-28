@@ -2,7 +2,7 @@
 #define POUND_GUI_THEME_H
 
 /// Theme -- the single source of truth for every colour, gap, radius and shadow
-/// Pound draws.
+/// Compound draws.
 ///
 /// Two properties this file exists to enforce:
 ///

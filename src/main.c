@@ -240,7 +240,7 @@ app_video_init(app_t *app)
 
     POUND_LOG_DEBUG(&thread_logger, "Configuring video subsystem...");
 
-    if (!SDL_SetHint(SDL_HINT_APP_NAME, "Pound Emulator"))
+    if (!SDL_SetHint(SDL_HINT_APP_NAME, "Compound Emulator"))
     {
         POUND_LOG_WARN(
             &thread_logger, "Failed to set SDL application name because %s.", SDL_GetError());
@@ -280,7 +280,7 @@ app_video_init(app_t *app)
         }
     }
 
-    app->window = SDL_CreateWindow("Pound Emulator",
+    app->window = SDL_CreateWindow("Compound Emulator",
                                    1270,
                                    720,
                                    SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
@@ -748,7 +748,7 @@ app_hot_reload_init(app_t *app)
 
 #if !POUND_PLATFORM_SUPPORTS_HOT_RELOAD
 
-    // Android ships PoundGui as a static library: SDL_GetBasePath() resolves
+    // Android ships CompoundGui as a static library: SDL_GetBasePath() resolves
     // inside the read-only APK, so there is nowhere writable to copy a freshly
     // linked image to and no way to dlopen an arbitrary path. The same
     // `gui_plugin_exports_t` vtable the loader would have populated is resolved
@@ -1050,7 +1050,7 @@ app_render_frozen_overlay(app_t *app)
                                    | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar
                                    | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings;
 
-    if (igBegin("Pound GUI Frozen", NULL, flags))
+    if (igBegin("Compound GUI Frozen", NULL, flags))
     {
         igText("GUI is frozen due to a hot reload failure.");
         igSeparator();

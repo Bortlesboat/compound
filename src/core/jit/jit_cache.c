@@ -120,14 +120,14 @@ chunk_release(void *POUND_RESTRICT base, const size_t bytes)
 /// Deliberately called before the protection change rather than after, for two
 /// reasons. The flush has to happen after the guest's machine code is written and
 /// before the range stops being writable, and libgcc's `__clear_cache` is a
-/// kernel call on the platforms Pound targets but is not contractually a
+/// kernel call on the platforms Compound targets but is not contractually a
 /// non-writing function -- calling it on a range that had just become read-only
 /// would turn a cache-coherency bug into a fault.
 static void
 chunk_flush_icache(void *POUND_RESTRICT base, const size_t bytes)
 {
 #if POUND_PLATFORM_WINDOWS
-    // Required on every architecture Windows runs Pound on, ARM64 included,
+    // Required on every architecture Windows runs Compound on, ARM64 included,
     // where the data and instruction caches are not coherent.
     if (0U == FlushInstructionCache(GetCurrentProcess(), base, bytes))
     {

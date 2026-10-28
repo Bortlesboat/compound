@@ -1,7 +1,5 @@
 #include "loader/boot/boot.h"
 #include "log.h"
-#include "hos/kernel.h"
-#include "hos/process.h"
 #include <string.h>
 
 error_t

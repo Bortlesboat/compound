@@ -1,6 +1,6 @@
 # Architecture
 
-How Pound is put together, and why.
+How Compound is put together, and why.
 
 - [Shape](#shape)
 - [Targets and dependencies](#targets-and-dependencies)
@@ -15,7 +15,7 @@ How Pound is put together, and why.
 
 ## Shape
 
-Pound is a C11 emulator shell with a C++ debug GUI. The guest side now reaches
+Compound is a C11 emulator shell with a C++ debug GUI. The guest side now reaches
 from an ARM64 interpreter through a Horizon OS kernel, system call layer and
 thread scheduler; a graphics backend and the rest of the OS surface are still
 missing, so nothing boots a title yet.
@@ -28,18 +28,18 @@ missing, so nothing boots a title yet.
                              └────┬──────────────┬──────┘
                                   │              │
               ┌───────────────────┘              └─────────────┐
-              │ dlopen(PoundGui)          linked directly  │
+              │ dlopen(CompoundGui)          linked directly  │
               │ (desktop)                 (Android)         │
               ▼                                            ▼
      ┌────────────────────┐                       ┌──────────────────┐
-     │      PoundGui      │                       │     PoundGui     │
+     │      CompoundGui      │                       │     CompoundGui     │
      │  ImGui panels      │                       │   (STATIC)       │
      │  memory tracker    │                       │                  │
      └─────────┬──────────┘                       └────────┬─────────┘
                │  via pound_core* API                        │
                ▼                                             ▼
      ┌────────────────────────────────────────────────────────────┐
-     │                        PoundCore                            │
+     │                        CompoundCore                            │
      │  log.c      thread-local logging                           │
      │  memory.c   mimalloc wrapper + bucket accounting           │
      │  guest_memory.c  guest↔host address translation            │
@@ -59,18 +59,18 @@ missing, so nothing boots a title yet.
 
 | Target | Type | Notes |
 | --- | --- | --- |
-| `PoundCore` | OBJECT | The emulator core. Deliberately free of SDL and ImGui. |
-| `PoundGui` | SHARED (desktop) / STATIC (Android) | Loads by path on desktop; linked in on Android. |
+| `CompoundCore` | OBJECT | The emulator core. Deliberately free of SDL and ImGui. |
+| `CompoundGui` | SHARED (desktop) / STATIC (Android) | Loads by path on desktop; linked in on Android. |
 | `imgui` | SHARED (desktop) / STATIC (Android) | Built from the vendored cimgui sources. |
-| `Pound` | EXE (desktop) / SHARED `libmain.so` (Android) | The emulator itself. |
-| `PoundTests` | EXE | Links `PoundCore` only. |
+| `Compound` | EXE (desktop) / SHARED `libmain.so` (Android) | The emulator itself. |
+| `CompoundTests` | EXE | Links `CompoundCore` only. |
 | `Ballistic::Engine` | IMPORTED | Prebuilt JIT, or an inert INTERFACE target when unavailable. |
 
-`PoundCore` is an OBJECT library so the core is compiled once and linked into
-both `Pound` and `PoundTests` with `POSITION_INDEPENDENT_CODE` on, which it needs
-anyway to be linked into `PoundGui`.
+`CompoundCore` is an OBJECT library so the core is compiled once and linked into
+both `Compound` and `CompoundTests` with `POSITION_INDEPENDENT_CODE` on, which it needs
+anyway to be linked into `CompoundGui`.
 
-`PoundTests` deliberately does not link SDL or ImGui. The code under test does
+`CompoundTests` deliberately does not link SDL or ImGui. The code under test does
 not touch either, and pulling them in would make the suite impossible to run in
 the headless CI container or under QEMU — which is exactly where these
 regressions would first be caught.
@@ -201,7 +201,7 @@ header-driven SPIR-V emitter. The translation produces a self-contained SPIR-V
 function using CB0–CB15 Uniform blocks for constant buffers and supports a small
 subset of opcodes (NOP, MOV, IADD3, IMAD, ISETP, LDC, EXIT, KILL) with predicated
 forms, returning `POUND_ERROR_UNSUPPORTED_INSTRUCTION` for everything else. The
-module is built into `PoundCore` and covered by `tests/test_sm86.c` (34 cases).
+module is built into `CompoundCore` and covered by `tests/test_sm86.c` (34 cases).
 
 ### Horizon OS kernel — `src/core/hos/kernel.{h,c}`
 
@@ -279,7 +279,7 @@ needs it to be, which the syscall layer reports as Horizon's `0xFA01`.
 ### Horizon OS scheduler — `src/core/hos/scheduler.{h,c}`
 
 `hos/kernel.{h,c}` owns threads and never decides which one runs; this module is that
-decision, and the only thing in Pound that knows the clock. One scheduler is one guest
+decision, and the only thing in Compound that knows the clock. One scheduler is one guest
 core. Threads are runnable, running or parked, and the pick is the runnable thread with the
 lowest priority *number* — Horizon numbers priorities downwards, so zero is the most urgent
 — with the oldest first among equals. It hands that thread to a caller-supplied run
@@ -364,7 +364,7 @@ is refused whole rather than half-changed. A region may be reprotected only if i
 writable is refused rather than done, and a region carrying an attribute the caller is not
 masking — a locked page, say — is not eligible either. An attribute change may set or clear
 exactly the uncached bit (`0x8`), and only on a region carrying `FlagCanChangeAttribute`
-(`0x1000000`); Pound's host memory has no separate cached view, so the bit lives in the table
+(`0x1000000`); Compound's host memory has no separate cached view, so the bit lives in the table
 and comes back out through `svcQueryMemory` exactly as it went in. Splitting for either
 operation pre-checks the table and reports `POUND_ERROR_ALLOCATION_FAILED` — `0xCE01` again —
 rather than half-making the change. `tests/test_hos_memory_layout.c` covers the module with
@@ -376,7 +376,7 @@ An A64 `SVC` is a trap to a numbered kernel entry point: the immediate is the nu
 `X0`–`X7` are the arguments, and `X0` carries the answer back — either as the `Result`
 itself or as a pointer the callee writes the answer through. The interpreter stops on
 one and reports `INTERPRETER_TRAP_SVC` with the immediate; this module is the only thing
-in Pound that turns that number into work.
+in Compound that turns that number into work.
 
 The whole design is one rule about what a failure looks like, and it is the rule that
 keeps an emulator honest. A call can fail in two entirely different ways:
@@ -385,7 +385,7 @@ keeps an emulator honest. A call can fail in two entirely different ways:
   writable event is a real failure on hardware with a documented `Result` (`0xE401`).
   The call *completes*: `X0` gets that value, `pc` steps over the trap, and the guest
   branches on it exactly as it would on a Switch.
-- **Pound has not implemented it.** `svcSendSyncRequest` needs the CMIF wire format and
+- **Compound has not implemented it.** `svcSendSyncRequest` needs the CMIF wire format and
   the thread-local IPC buffer, and `svcMapMemory` needs an unmap path the layout does not
   have yet. Neither exists. These do not complete: the call returns
   `POUND_ERROR_UNSUPPORTED_SYSCALL`, logs the number *and its name*
@@ -393,8 +393,8 @@ keeps an emulator honest. A call can fail in two entirely different ways:
   standing to be looked at.
 
 Collapsing the second into the first is the one thing this module must not do. A plausible
-`Result` for a call nobody wrote makes a title take a branch on an answer Pound invented,
-and the emulator looks like firmware that replied. A refusal is a fact about Pound; a
+`Result` for a call nobody wrote makes a title take a branch on an answer Compound invented,
+and the emulator looks like firmware that replied. A refusal is a fact about Compound; a
 `Result` is a fact about the guest.
 
 Switch system calls do not all answer in `X0`, and there are three places an answer can
@@ -408,7 +408,7 @@ The register is what actually reaches a real guest: the kernel leaves the value 
 and the caller's own stub stores it through the out-pointer it passed (libnx's `svc.s` does
 `str x0, [sp, #-16]!; svc …; ldr x2, [sp], #16; str w1, [x2]`). This module sets that
 register. It *also* writes the slot through `X0` directly for the calls whose out-pointer
-Pound's guests read that way, and where the kernel itself writes `X0`'s target — as with
+Compound's guests read that way, and where the kernel itself writes `X0`'s target — as with
 `MemoryInfo` — it writes the whole structure in one piece so a bad pointer cannot
 half-update it, and it does so *before* replacing `X0`, because afterwards the address is
 gone. Where hardware's value in a register on a *failure* path is not established, the
@@ -449,7 +449,7 @@ on a timeout that never happened. `svcCreateThread`, `svcStartThread`, `svcExitT
 exactly the cases Horizon defines: `svcStartThread` on a thread that is not in the created
 state is `0xFA01`, produced *here* rather than by the kernel, which answers a second start
 with an error code and leaves this layer to know the `Result`. An out-of-range priority is
-a gap rather than a `Result`, because Pound has not established which word Horizon uses and
+a gap rather than a `Result`, because Compound has not established which word Horizon uses and
 inventing one would look like an answer.
 
 A wait over several handles treats a session as a legitimate object that is simply never
@@ -509,7 +509,7 @@ of them. `tests/test_hos_syscall.c` covers it with 46 cases.
 
 ## Debug GUI and hot reload
 
-`PoundGui` is a separate shared library on desktop so it can be rebuilt and
+`CompoundGui` is a separate shared library on desktop so it can be rebuilt and
 reloaded without restarting the emulator. It is reached exclusively through the
 `gui_plugin_exports_t` vtable:
 
@@ -536,23 +536,23 @@ returning `true` (which is `1`, and therefore
 These are not stylistic; each one produced an image that could be built but not
 actually loaded.
 
-**`PoundGui` links `PoundCore`.** The plugin uses `thread_logger`,
+**`CompoundGui` links `CompoundCore`.** The plugin uses `thread_logger`,
 `memory_subsystem_*` and `safe_math_*`, which live in the core OBJECT library.
-Without an explicit `PoundCore` on its link line those symbols were unresolved
+Without an explicit `CompoundCore` on its link line those symbols were unresolved
 in the DLL. Windows happened to paper over it — `WINDOWS_EXPORT_ALL_SYMBOLS` on
-`Pound.exe` published the core out of the host executable, and the DLL picked
+`Compound.exe` published the core out of the host executable, and the DLL picked
 them up at load time from the already-mapped host image — but that is a PE
 loader accident with no ELF equivalent, so the same code would have failed to
-link for Android or any other platform. Linking `PoundCore` into `PoundGui`
+link for Android or any other platform. Linking `CompoundCore` into `CompoundGui`
 embeds its own copy of the core objects in the DLL.
 
-On Android `PoundGui` is `STATIC`, and a static archive consumes no OBJECT
+On Android `CompoundGui` is `STATIC`, and a static archive consumes no OBJECT
 library objects, so `libmain.so` still ends up with exactly one core.
 
 **`gui_plugin_error_to_string` is `POUND_EXPORT`.** It is the only
 host-facing function that is not behind the vtable, and `src/main.c` calls it
 to turn a `gui_plugin_error_t` into log text. Left unannotated it was absent
-from `libPoundGui.dll`'s export table — the DLL exported 35 symbols and every
+from `libCompoundGui.dll`'s export table — the DLL exported 35 symbols and every
 one of them resolved, and this one did not.
 
 **`IMGUI_IMPL_API` is `POUND_IMGUI_IMPL_API`.** `cimgui.h` defines `CIMGUI_API`
@@ -582,7 +582,7 @@ still takes precedence, so a host that wants full control keeps it.
 `SDL_GetBasePath()` resolves inside the read-only APK, so there is nowhere
 writable to copy a reloaded image to and no way to `dlopen` an arbitrary path.
 
-`PoundGui` is therefore built `STATIC` and `src/main.c` binds it through
+`CompoundGui` is therefore built `STATIC` and `src/main.c` binds it through
 `app_gui_bind_static()`, which resolves the same vtable directly. Because
 `gui_plugin_destroy` already handles a `NULL` module, every downstream call site
 is unchanged and the hot-reload path is bypassed rather than forked.
@@ -727,11 +727,11 @@ dispatcher's counters.
 
 ## Android
 
-Pound is not an executable on Android. `SDLActivity` `dlopen()`s `libmain.so`
+Compound is not an executable on Android. `SDLActivity` `dlopen()`s `libmain.so`
 and calls the exported `SDL_main` through JNI; `src/main.c` produces that symbol
 by including `<SDL3/SDL_main.h>`, which is **not** pulled in by `SDL.h`.
 
-Everything links statically into one `libmain.so`: SDL3, ImGui, `PoundGui`,
+Everything links statically into one `libmain.so`: SDL3, ImGui, `CompoundGui`,
 mimalloc, libc++. Two copies of SDL state in one process crash
 `ImGui_ImplSDL3_Init` — the same failure the desktop build avoids by using
 shared SDL.

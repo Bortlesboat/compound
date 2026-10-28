@@ -77,7 +77,7 @@
 //! hold the previous contents of those addresses. Every transition to RX flushes
 //! the range. The flush happens *before* the protection change, while the range is
 //! still writable: libgcc's `__clear_cache` is a kernel call on the platforms
-//! Pound targets, but it is not contractually a non-writing function, and calling
+//! Compound targets, but it is not contractually a non-writing function, and calling
 //! it on a range that has just become read-only would turn a cache-coherency bug
 //! into a fault.
 //!

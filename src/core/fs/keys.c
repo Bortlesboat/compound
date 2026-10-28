@@ -557,7 +557,7 @@ key_store_get(const key_store_t *POUND_RESTRICT store, const char *POUND_RESTRIC
     // substituted with anything, because the natural wrong reaction to a decryption
     // failure is to try a different key.
     POUND_LOG_ERROR(&thread_logger,
-                    "The key '%s' is not in the key file. Pound ships no keys and will not "
+                    "The key '%s' is not in the key file. Compound ships no keys and will not "
                     "substitute one; add it to your own key file to load this title.",
                     name);
 

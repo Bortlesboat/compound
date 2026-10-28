@@ -173,7 +173,7 @@ pfs0_open(pfs0_t *POUND_RESTRICT pfs0, const fs_reader_t *POUND_RESTRICT reader)
     // Read but deliberately not enforced. The field is documented as reserved and is
     // zero in every file Nintendo's tooling produces, but nothing in the format gives
     // it a meaning, and rejecting an image over a field whose meaning is unknown would
-    // make Pound stricter than the format requires for no benefit. Noted at debug level
+    // make Compound stricter than the format requires for no benefit. Noted at debug level
     // so a user investigating a rejected image can see whether it is zero.
     if (0U != reserved)
     {
@@ -668,7 +668,7 @@ pfs0_index_of(const pfs0_t *POUND_RESTRICT pfs0, const char *POUND_RESTRICT name
     //
     // `out_index` is left alone rather than set to a sentinel, so a caller that ignores
     // the return value cannot mistake an untouched local for a valid index. Every
-    // caller in Pound checks the status.
+    // caller in Compound checks the status.
     return POUND_ERROR_NOT_FOUND;
 }
 

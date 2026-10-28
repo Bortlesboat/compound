@@ -48,7 +48,7 @@ pound_page_render_logs(const pound_page_context_t *POUND_RESTRICT context)
     pound_page_heading(context,
                        "DIAGNOSTICS",
                        "Logs",
-                       "Everything Pound has reported, newest last. Errors and warnings carry "
+                       "Everything Compound has reported, newest last. Errors and warnings carry "
                        "colour so they are easy to find.");
 
     if ((NULL == context->log_ring) || (NULL == context->log_scratch)

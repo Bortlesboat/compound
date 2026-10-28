@@ -3,7 +3,7 @@
 
 //! SHA-256, as specified in FIPS 180-4.
 //!
-//! This exists because every container format Pound reads authenticates itself with
+//! This exists because every container format Compound reads authenticates itself with
 //! SHA-256: an XCI records the SHA-256 of its header, an NCA header records the
 //! SHA-256 of the PFS0 it wraps, and a PFS0 file entry records the SHA-256 of the file
 //! it points at. Verifying those hashes is the only structural integrity check
@@ -27,7 +27,7 @@
 //! SHA-256 is a hash, not a MAC and not a cipher. It provides integrity, not
 //! authenticity, and it provides neither confidentiality nor a way to detect a file
 //! that was deliberately modified and then re-signed by someone who knew the format.
-//! Pound uses it because the formats specify it, not because it makes an image
+//! Compound uses it because the formats specify it, not because it makes an image
 //! trustworthy.
 
 #include "attributes.h"
@@ -82,7 +82,7 @@ void sha256_init(sha256_t *POUND_RESTRICT context);
 ///
 /// `data` may be NULL only when `size` is zero, which is permitted and does nothing.
 /// Passing NULL with a non-zero size is a caller bug and is rejected by the standard
-/// library's behaviour inside `memcpy`; Pound does not silently accept it.
+/// library's behaviour inside `memcpy`; Compound does not silently accept it.
 void sha256_update(sha256_t *POUND_RESTRICT context, const void *POUND_RESTRICT data, size_t size);
 
 /// Finishes the message and writes the digest to `out`.

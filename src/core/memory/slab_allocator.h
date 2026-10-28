@@ -30,7 +30,7 @@
 //!
 //! SLUB avoids this by resolving a pointer to its slab through the kernel's page
 //! tables and keeping liveness implicit in the free-list transition. Neither half
-//! of that is available to a userspace emulator: Pound has no guest page tables
+//! of that is available to a userspace emulator: Compound has no guest page tables
 //! to consult, and an implicit liveness bit can only be recovered by walking the
 //! free list, which is linear.
 //!

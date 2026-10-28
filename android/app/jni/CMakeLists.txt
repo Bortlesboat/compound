@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Pound — Android native build entry point
+# Compound — Android native build entry point
 # -----------------------------------------------------------------------------
 #
 #   cd android
@@ -21,7 +21,7 @@ get_filename_component(REPOSITORY_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../.."
 
 if (NOT EXISTS "${REPOSITORY_ROOT}/CMakeLists.txt")
     message(FATAL_ERROR
-            "Pound: repository root not found at ${REPOSITORY_ROOT}. "
+            "Compound: repository root not found at ${REPOSITORY_ROOT}. "
             "android/app/jni/CMakeLists.txt expects to live at <repo>/android/app/jni/.")
 endif ()
 
@@ -57,13 +57,13 @@ endif ()
 
 if (NOT ANDROID_NDK)
     message(FATAL_ERROR
-            "Pound: ANDROID_NDK is not set. Install the NDK through Android Studio or set "
+            "Compound: ANDROID_NDK is not set. Install the NDK through Android Studio or set "
             "ANDROID_NDK_HOME before building.")
 endif ()
 
 set(ANDROID_NDK "${ANDROID_NDK}" CACHE PATH "Path to the Android NDK")
 
-message(STATUS "[Pound] Android NDK: ${ANDROID_NDK}")
+message(STATUS "[Compound] Android NDK: ${ANDROID_NDK}")
 
 # -----------------------------------------------------------------------------
 # Point CMake at the repository's toolchain and build graph
@@ -75,11 +75,11 @@ if (NOT CMAKE_TOOLCHAIN_FILE)
     set(POUND_ANDROID_TOOLCHAIN "${REPOSITORY_ROOT}/cmake/toolchains/android-arm64.cmake")
 
     if (NOT EXISTS "${POUND_ANDROID_TOOLCHAIN}")
-        message(FATAL_ERROR "Pound: missing toolchain file: ${POUND_ANDROID_TOOLCHAIN}")
+        message(FATAL_ERROR "Compound: missing toolchain file: ${POUND_ANDROID_TOOLCHAIN}")
     endif ()
 
     set(CMAKE_TOOLCHAIN_FILE "${POUND_ANDROID_TOOLCHAIN}" CACHE FILEPATH
-            "Pound Android toolchain" FORCE)
+            "Compound Android toolchain" FORCE)
 endif ()
 
 # An explicit binary directory keeps this wrapper's CMake state from colliding

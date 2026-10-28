@@ -188,7 +188,7 @@ pound_fonts_setup(pound_fonts_t *POUND_RESTRICT out_fonts, const float scale)
 
     for (size_t i = 0; i < POUND_FONT_CANDIDATE_COUNT; i++)
     {
-        ImFontConfig *const config = pound_font_make_config(POUND_FONT_BASE_SIZE, "Pound Body");
+        ImFontConfig *const config = pound_font_make_config(POUND_FONT_BASE_SIZE, "Compound Body");
 
         if (NULL == config)
         {
@@ -215,13 +215,13 @@ pound_fonts_setup(pound_fonts_t *POUND_RESTRICT out_fonts, const float scale)
     if (NULL == base_font)
     {
         POUND_LOG_WARN(&thread_logger,
-                       "None of the %zu system fonts tried were loadable, so Pound is using "
+                       "None of the %zu system fonts tried were loadable, so Compound is using "
                        "ImGui's embedded font. Text will be blockier than the interface was "
                        "laid out for.",
                        POUND_FONT_CANDIDATE_COUNT);
 
         ImFontConfig *const embedded_config
-            = pound_font_make_config(POUND_FONT_BASE_SIZE, "Pound Embedded");
+            = pound_font_make_config(POUND_FONT_BASE_SIZE, "Compound Embedded");
 
         if (NULL == embedded_config)
         {
